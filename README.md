@@ -2,6 +2,8 @@
 
 App de quadro inteligente para iPad antigo — relógio, clima, slideshow de fotos e câmeras ao vivo.
 
+**Demo publicada:** [sergiofjr71.github.io/Mural](https://sergiofjr71.github.io/Mural/)
+
 ---
 
 ## Como instalar no iPad

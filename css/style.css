@@ -64,18 +64,214 @@ html, body {
    MODO: RELÓGIO
    ===================== */
 #mode-clock {
-  align-items: center;
-  justify-content: center;
+  flex-direction: row;
+  align-items: flex-start;
   background: var(--bg);
 }
 
 .clock-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 32px 36px;
+  flex-shrink: 0;
+  transform: scale(0.7);
+  transform-origin: top left;
+}
+
+#clock-left-col {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0;
-  padding: 20px;
   text-align: center;
+  min-width: 320px;
+}
+
+#clock-photo-col {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  padding: 0 16px 16px 0;
+  box-sizing: border-box;
+  align-self: flex-start;
+  margin-left: 0;
+}
+
+#clock-photo-frame {
+  width: 100%;
+  height: 100%;
+
+  border-radius: 0 0 16px 0;
+  overflow: hidden;
+  background: var(--bg2);
+  position: relative;
+  border: 1px solid var(--bg3);
+}
+
+#clock-photo-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center center;
+  transition: opacity 1s ease;
+  pointer-events: none;
+  z-index: 0;
+}
+
+#clock-photo-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  text-align: center;
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 1;
+  transition: color 0.2s;
+}
+#clock-photo-empty:hover,
+#clock-photo-empty:active {
+  color: var(--accent);
+}
+
+.clock-photo-nav {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  z-index: 3;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.18s ease;
+}
+
+.clock-photo-nav:disabled {
+  cursor: default;
+  pointer-events: none;
+  opacity: 0;
+}
+
+#clock-photo-prev {
+  left: 0;
+  justify-content: flex-start;
+  padding-left: 10px;
+}
+
+#clock-photo-next {
+  right: 0;
+  justify-content: flex-end;
+  padding-right: 10px;
+}
+
+.clock-city-nav {
+  top: 0;
+  bottom: auto;
+  height: clamp(96px, 24vw, 128px);
+  z-index: 4;
+  align-items: flex-start;
+  padding-top: 8px;
+}
+
+#clock-city-prev {
+  left: 0;
+  justify-content: flex-start;
+  padding-left: 4px;
+}
+
+#clock-city-next {
+  right: 0;
+  justify-content: flex-end;
+  padding-right: 4px;
+}
+
+#clock-city-prev:not(:disabled):hover,
+#clock-city-prev:not(:disabled):focus-visible,
+#clock-city-prev:not(:disabled).is-active {
+  background: linear-gradient(
+    to right,
+    rgba(26, 111, 255, 0.22),
+    rgba(26, 111, 255, 0)
+  );
+}
+
+#clock-city-next:not(:disabled):hover,
+#clock-city-next:not(:disabled):focus-visible,
+#clock-city-next:not(:disabled).is-active {
+  background: linear-gradient(
+    to left,
+    rgba(26, 111, 255, 0.22),
+    rgba(26, 111, 255, 0)
+  );
+}
+
+#clock-city-prev:not(:disabled):hover .clock-photo-nav-icon,
+#clock-city-prev:not(:disabled).is-active .clock-photo-nav-icon {
+  transform: translateX(-1px);
+}
+
+#clock-city-next:not(:disabled):hover .clock-photo-nav-icon,
+#clock-city-next:not(:disabled).is-active .clock-photo-nav-icon {
+  transform: translateX(1px);
+}
+
+.clock-photo-nav-icon {
+  width: 20px;
+  height: 20px;
+  color: rgba(255, 255, 255, 0.38);
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.4));
+  transition: color 0.18s ease, transform 0.18s ease;
+  pointer-events: none;
+}
+
+#clock-photo-prev:not(:disabled):hover,
+#clock-photo-prev:not(:disabled):focus-visible,
+#clock-photo-prev:not(:disabled).is-active {
+  background: linear-gradient(
+    to right,
+    rgba(26, 111, 255, 0.22),
+    rgba(26, 111, 255, 0)
+  );
+}
+
+#clock-photo-next:not(:disabled):hover,
+#clock-photo-next:not(:disabled):focus-visible,
+#clock-photo-next:not(:disabled).is-active {
+  background: linear-gradient(
+    to left,
+    rgba(26, 111, 255, 0.22),
+    rgba(26, 111, 255, 0)
+  );
+}
+
+.clock-photo-nav:not(:disabled):hover .clock-photo-nav-icon,
+.clock-photo-nav:not(:disabled):focus-visible .clock-photo-nav-icon,
+.clock-photo-nav:not(:disabled).is-active .clock-photo-nav-icon {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+#clock-photo-prev:not(:disabled):hover .clock-photo-nav-icon,
+#clock-photo-prev:not(:disabled).is-active .clock-photo-nav-icon {
+  transform: translateX(-1px);
+}
+
+#clock-photo-next:not(:disabled):hover .clock-photo-nav-icon,
+#clock-photo-next:not(:disabled).is-active .clock-photo-nav-icon {
+  transform: translateX(1px);
 }
 
 #clock-time {
@@ -111,45 +307,131 @@ html, body {
   margin: 20px auto;
 }
 
-#weather-main {
+/* ── WEATHER BLOCK ── */
+#weather-block {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+#weather-current {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 16px;
 }
 
+#weather-current-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+#weather-city-name {
+  font-size: clamp(14px, 2.8vw, 22px);
+  font-weight: 600;
+  color: var(--text);
+}
+
+#weather-temp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 2px;
+}
+
 #weather-icon-big {
-  font-size: clamp(36px, 7vw, 64px);
+  font-size: clamp(28px, 5vw, 48px);
   line-height: 1;
 }
 
 #weather-temp-big {
-  font-size: clamp(32px, 7vw, 64px);
+  font-size: clamp(36px, 8vw, 72px);
   font-weight: 100;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+#weather-desc-main {
+  font-size: clamp(11px, 2vw, 15px);
+  color: #f0b429;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+#weather-current-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  padding-top: 4px;
+}
+
+.weather-meta-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+.weather-meta-label {
+  font-size: clamp(9px, 1.4vw, 11px);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.weather-meta-row span:last-child {
+  font-size: clamp(13px, 2.4vw, 18px);
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
-.weather-details {
+/* ── FORECAST ROWS ── */
+#weather-daily,
+#weather-hourly {
+  display: flex;
+  gap: 4px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+  padding: 8px 4px;
+}
+
+.forecast-col {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  padding: 2px 4px;
+}
+.forecast-col.forecast-today {
+  background: rgba(26,111,255,0.12);
+  border-radius: 8px;
 }
 
-#weather-city-name {
-  font-size: clamp(13px, 2.5vw, 18px);
+.fc-day {
+  font-size: clamp(9px, 1.5vw, 12px);
+  color: var(--text-dim);
   font-weight: 500;
-  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
+.forecast-today .fc-day { color: var(--accent); }
 
-#weather-desc-main {
-  font-size: clamp(11px, 2vw, 14px);
-  color: var(--text-mid);
+.fc-icon { font-size: clamp(14px, 2.5vw, 20px); line-height: 1; }
+
+.fc-max {
+  font-size: clamp(11px, 2vw, 15px);
+  color: #f0b429;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
-
-#weather-humidity {
+.fc-min {
   font-size: clamp(10px, 1.8vw, 13px);
   color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
 }
 
 /* MODO NOTURNO */
@@ -589,11 +871,23 @@ input[type="file"] {
 .toggle-label input:checked + .toggle-track { background: var(--accent); }
 .toggle-label input:checked + .toggle-track::after { transform: translateX(18px); background: #fff; }
 
+#photos-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+
 /* FOTOS PREVIEW */
 #photos-preview {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 10px 0;
 }
 .photo-thumb {
   width: 56px;
@@ -633,5 +927,363 @@ input[type="file"] {
   gap: 8px;
   align-items: end;
 }
+.cam-input-row--url {
+  grid-template-columns: 1fr auto;
+}
+.settings-hint--optional {
+  margin-top: 12px;
+}
 .cam-input-row input { margin: 0; }
 .cam-input-row .btn-action { padding: 10px 14px; white-space: nowrap; }
+
+.photo-url-field {
+  position: relative;
+  min-width: 0;
+}
+.photo-url-field--full {
+  width: 100%;
+}
+.photo-folder-row {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#photo-folder-picker {
+  cursor: pointer;
+}
+
+.btn-choose-photo-folder {
+  width: 100%;
+}
+
+label.btn-choose-photo-folder {
+  display: block;
+  text-align: center;
+  cursor: pointer;
+  margin: 0;
+}
+
+.photo-url-field input[readonly] {
+  cursor: pointer;
+  color: var(--text);
+  pointer-events: none;
+}
+
+.folder-source-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.folder-source-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-action--compact {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.folder-source-actions #btn-clear-folder {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--danger);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.photo-url-field input[readonly] {
+  cursor: pointer;
+  color: var(--text);
+}
+.photo-url-field input[type="text"],
+.photo-url-field input[type="url"] {
+  width: 100%;
+  padding-right: 44px;
+  margin: 0;
+}
+.btn-browse-photo-folder {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  width: 36px;
+  height: calc(100% - 8px);
+  min-height: 32px;
+  padding: 0;
+  background: var(--bg3);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+  transition: border-color 0.2s, background 0.2s;
+}
+.btn-browse-photo-folder:hover,
+.btn-browse-photo-folder:active {
+  border-color: var(--accent);
+  background: var(--bg2);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+#photo-url-add-row.hidden,
+#photo-http-hint.hidden { display: none; }
+#photo-url-add-row {
+  grid-template-columns: 1fr auto;
+}
+
+/* =====================
+   BUSCA DE CIDADE
+   ===================== */
+.city-clickable {
+  cursor: pointer;
+  border-bottom: 1px dashed var(--text-dim);
+  transition: color 0.2s, border-color 0.2s;
+}
+.city-clickable:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+#city-search-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 11, 24, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#city-search-overlay.hidden { display: none !important; }
+
+#city-search-box {
+  background: var(--bg2);
+  border: 1px solid var(--bg3);
+  border-radius: 16px;
+  width: min(480px, 90vw);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+}
+
+#city-search-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-mid);
+  border-bottom: 1px solid var(--bg3);
+}
+#city-search-header button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+}
+
+#city-search-input {
+  margin: 14px 16px 10px;
+  padding: 12px 16px;
+  background: var(--bg3);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 16px;
+  outline: none;
+  width: calc(100% - 32px);
+  transition: border-color 0.2s;
+}
+#city-search-input:focus {
+  border-color: var(--accent);
+}
+
+#city-search-results {
+  overflow-y: auto;
+  padding: 0 10px 12px;
+  flex: 1;
+}
+
+.city-result-item {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+  gap: 2px;
+}
+.city-result-item:hover, .city-result-item:active {
+  background: var(--bg3);
+}
+.city-result-name {
+  font-size: 15px;
+  color: var(--text);
+  font-weight: 500;
+}
+.city-result-country {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.city-search-status {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+/* cidades salvas */
+#city-saved-section {
+  border-top: 1px solid var(--bg3);
+  padding: 10px 10px 12px;
+}
+#city-saved-header {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  padding: 4px 6px 8px;
+}
+.city-saved-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 10px;
+  transition: background 0.15s;
+}
+.city-saved-item:hover { background: var(--bg3); }
+.city-saved-item.active { background: rgba(26,111,255,0.12); }
+.city-saved-name {
+  font-size: 15px;
+  color: var(--text);
+  cursor: pointer;
+  flex: 1;
+}
+.city-saved-item.active .city-saved-name {
+  color: var(--accent);
+  font-weight: 500;
+}
+.city-saved-del {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 6px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  line-height: 1;
+}
+.city-saved-item:hover .city-saved-del { opacity: 1; }
+.city-saved-del:hover { color: var(--danger); }
+
+.city-saved-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  cursor: pointer;
+}
+.city-saved-coords {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.city-saved-item.active .city-saved-coords {
+  color: rgba(26,111,255,0.6);
+}
+
+/* =====================
+   EFEITOS SLIDESHOW
+   ===================== */
+.slide-img {
+  transition: none;
+}
+
+/* FADE */
+.slide-img.active { opacity: 1; }
+.slide-img:not(.active) { opacity: 0; }
+
+.fx-fade .slide-img.slide-in  { animation: fx-fade-in 0.7s ease forwards; }
+.fx-fade .slide-img.slide-out { animation: fx-fade-out 0.7s ease forwards; }
+@keyframes fx-fade-in  { from { opacity:0 } to { opacity:1 } }
+@keyframes fx-fade-out { from { opacity:1 } to { opacity:0 } }
+
+/* SLIDE */
+.fx-slide .slide-img.slide-in  { animation: fx-slide-in 0.7s ease forwards; }
+.fx-slide .slide-img.slide-out { animation: fx-slide-out 0.7s ease forwards; }
+@keyframes fx-slide-in  { from { transform:translateX(100%); opacity:1 } to { transform:translateX(0); opacity:1 } }
+@keyframes fx-slide-out { from { transform:translateX(0); opacity:1 } to { transform:translateX(-100%); opacity:0 } }
+
+/* ZOOM */
+.fx-zoom .slide-img.slide-in  { animation: fx-zoom-in 0.7s ease forwards; }
+.fx-zoom .slide-img.slide-out { animation: fx-zoom-out 0.7s ease forwards; }
+@keyframes fx-zoom-in  { from { transform:scale(1.12); opacity:0 } to { transform:scale(1); opacity:1 } }
+@keyframes fx-zoom-out { from { opacity:1 } to { opacity:0 } }
+
+/* KEN BURNS */
+.fx-kenburns .slide-img.active { animation: fx-kenburns 8s ease-in-out infinite alternate; }
+.fx-kenburns .slide-img.slide-in  { animation: fx-fade-in 1s ease forwards, fx-kenburns 8s ease-in-out infinite alternate; }
+.fx-kenburns .slide-img.slide-out { animation: fx-fade-out 1s ease forwards; }
+@keyframes fx-kenburns {
+  from { transform: scale(1)    translateX(0)    translateY(0); }
+  to   { transform: scale(1.08) translateX(-2%)  translateY(-1%); }
+}
+
+/* seleção de fotos */
+.photo-source-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.btn-source {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 12px;
+  background: var(--bg3);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  color: var(--text-mid);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.btn-source:hover, .btn-source:active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--text);
+}
+.btn-source-icon { font-size: 28px; line-height: 1; }

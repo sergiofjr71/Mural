@@ -20,18 +20,55 @@
     <!-- MODO: RELÓGIO (padrão) -->
     <div id="mode-clock" class="mode active">
       <div class="clock-wrapper">
+        <button type="button" id="clock-city-prev" class="clock-photo-nav clock-city-nav" aria-label="Cidade anterior" disabled>
+          <svg class="clock-photo-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M16 5 9 12 16 19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+        <button type="button" id="clock-city-next" class="clock-photo-nav clock-city-nav" aria-label="Próxima cidade" disabled>
+          <svg class="clock-photo-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 5 15 12 8 19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+        <div id="clock-left-col">
         <div id="clock-time">00:00</div>
         <div id="clock-seconds">00</div>
         <div id="clock-date">segunda-feira, 1 de janeiro</div>
         <div class="clock-divider"></div>
-        <div id="weather-main">
-          <span id="weather-icon-big">⛅</span>
-          <span id="weather-temp-big">--°</span>
-          <div class="weather-details">
-            <span id="weather-city-name">--</span>
-            <span id="weather-desc-main">carregando...</span>
-            <span id="weather-humidity">Umidade: --%</span>
+        <div id="weather-block">
+          <div id="weather-current">
+            <div id="weather-current-left">
+              <span id="weather-city-name" class="city-clickable" title="Clique para trocar a cidade">--</span>
+              <div id="weather-temp-row">
+                <span id="weather-icon-big">⛅</span>
+                <span id="weather-temp-big">--°</span>
+              </div>
+              <span id="weather-desc-main">carregando...</span>
+            </div>
+            <div id="weather-current-right">
+              <div class="weather-meta-row"><span class="weather-meta-label">Sensação</span><span id="weather-feels">--°</span></div>
+              <div class="weather-meta-row"><span class="weather-meta-label">Umidade</span><span id="weather-humidity">--%</span></div>
+            </div>
           </div>
+          <div id="weather-daily"></div>
+          <div id="weather-hourly"></div>
+        </div>
+        </div><!-- /clock-left-col -->
+      </div>
+      <div id="clock-photo-col">
+        <div id="clock-photo-frame">
+          <img id="clock-photo-img" alt="">
+          <div id="clock-photo-empty">Configurar Fotos</div>
+          <button type="button" id="clock-photo-prev" class="clock-photo-nav" aria-label="Foto anterior" disabled>
+            <svg class="clock-photo-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M16 5 9 12 16 19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <button type="button" id="clock-photo-next" class="clock-photo-nav" aria-label="Próxima foto" disabled>
+            <svg class="clock-photo-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 5 15 12 8 19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
         </div>
       </div>
     </div>
@@ -110,10 +147,19 @@
 
       <div class="settings-section">
         <h3>Fotos</h3>
-        <p class="settings-hint">Selecione imagens do seu dispositivo. Ficam salvas localmente.</p>
-        <input type="file" id="cfg-photos" accept="image/*" multiple>
+        <p class="settings-hint">Vincule <strong>apenas pastas</strong> locais. Nada é importado — à meia-noite o app relê a pasta e monta uma lista aleatória de fotos.</p>
+        <div class="photo-folder-row" id="photo-folder-row">
+          <div class="photo-url-field photo-url-field--full" id="photo-folder-picker">
+            <input type="text" id="cfg-photo-url" readonly placeholder="Nenhuma pasta vinculada" autocomplete="off" tabindex="-1" aria-hidden="true">
+            <button type="button" class="btn-browse-photo-folder" id="btn-browse-photo-folder" title="Escolher pasta" aria-label="Escolher pasta">📂</button>
+          </div>
+          <button type="button" class="btn-action btn-choose-photo-folder" id="btn-choose-photo-folder">Escolher pasta</button>
+          <label for="cfg-photo-folder-fallback" class="btn-action btn-choose-photo-folder" id="btn-choose-photo-folder-fallback" hidden>Escolher pasta</label>
+          <input type="file" id="cfg-photo-folder-fallback" class="sr-only" tabindex="-1" webkitdirectory directory multiple aria-hidden="true">
+        </div>
+        <div id="folder-source-info"></div>
         <div id="photos-preview"></div>
-        <button class="btn-action btn-danger" id="btn-clear-photos">Remover todas as fotos</button>
+        <button class="btn-action btn-danger" id="btn-clear-photos">Remover pasta vinculada</button>
         <label>Intervalo do slideshow
           <select id="cfg-interval">
             <option value="5000">5 segundos</option>
@@ -121,6 +167,16 @@
             <option value="20000">20 segundos</option>
             <option value="30000">30 segundos</option>
             <option value="60000">1 minuto</option>
+          </select>
+        </label>
+        <label>Efeito de transição
+          <select id="cfg-transition">
+            <option value="none">Nenhum</option>
+            <option value="fade">Fade (dissolver)</option>
+            <option value="slide">Deslizar</option>
+            <option value="zoom">Zoom in</option>
+            <option value="kenburns">Ken Burns</option>
+            <option value="random">Randômico</option>
           </select>
         </label>
       </div>
@@ -177,6 +233,22 @@
       <div id="cam-expanded-info">
         <span id="cam-expanded-name"></span>
         <button id="btn-close-cam">✕</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BUSCA DE CIDADE -->
+  <div id="city-search-overlay" class="hidden">
+    <div id="city-search-box">
+      <div id="city-search-header">
+        <span>Buscar cidade</span>
+        <button id="btn-close-city-search">✕</button>
+      </div>
+      <input type="text" id="city-search-input" placeholder="Digite o nome da cidade..." autocomplete="off" autocorrect="off" spellcheck="false">
+      <div id="city-search-results"></div>
+      <div id="city-saved-section">
+        <div id="city-saved-header">Cidades salvas</div>
+        <div id="city-saved-list"></div>
       </div>
     </div>
   </div>

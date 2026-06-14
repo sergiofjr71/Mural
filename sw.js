@@ -4,7 +4,7 @@
    network-first para clima (API externa)
    ============================================ */
 
-const CACHE_NAME = 'smartdisplay-v1';
+const CACHE_NAME = 'smartdisplay-v23';
 
 const STATIC_ASSETS = [
   './',
