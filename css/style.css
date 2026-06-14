@@ -22,6 +22,7 @@
   --text-dim: #4a6080;
   --text-mid: #7a9cc0;
   --danger: #c0392b;
+  --border: rgba(122, 156, 192, 0.22);
   --nav-h: 64px;
   --radius: 12px;
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
@@ -71,11 +72,13 @@ html, body {
 
 .clock-wrapper {
   position: relative;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   padding: 32px 36px;
   flex-shrink: 0;
+  min-width: min(100%, 360px);
   transform: scale(0.7);
   transform-origin: top left;
 }
@@ -92,10 +95,12 @@ html, body {
   display: flex;
   flex: 1;
   min-width: 0;
+  min-height: 200px;
   padding: 0 16px 16px 0;
   box-sizing: border-box;
   align-self: flex-start;
   margin-left: 0;
+  z-index: 1;
 }
 
 #clock-photo-frame {
@@ -119,6 +124,10 @@ html, body {
   transition: opacity 1s ease;
   pointer-events: none;
   z-index: 0;
+}
+
+#clock-photo-img:not([src]) {
+  visibility: hidden;
 }
 
 #clock-photo-empty {
@@ -1259,6 +1268,19 @@ input[type="file"] {
 
 .folder-picker-btn[hidden],
 label.folder-picker-btn[hidden] {
+  display: none !important;
+}
+
+html.platform-ios #btn-add-photo-folder-native,
+html.platform-ios #btn-add-photo-folder-fallback {
+  display: none !important;
+}
+
+html.platform-ios #btn-add-photo-gallery-ios {
+  display: block !important;
+}
+
+html:not(.platform-ios) #btn-add-photo-gallery-ios {
   display: none !important;
 }
 

@@ -18,19 +18,16 @@
     #mode-clock { display: flex; min-height: 100vh; }
   </style>
   <title>SmartDisplay</title>
+  <link rel="stylesheet" href="css/style.css">
   <script>
     (function () {
-      var href = new URL('css/style.css', window.location.href).href;
-      var link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = href;
-      link.onerror = function () {
-        var fallback = document.createElement('link');
-        fallback.rel = 'stylesheet';
-        fallback.href = new URL('./css/style.css', window.location.href).href;
-        document.head.appendChild(fallback);
-      };
-      document.head.appendChild(link);
+      var root = document.documentElement;
+      var ua = navigator.userAgent || '';
+      var isIOS = /iPhone|iPod|iPad/i.test(ua);
+      var isIPadOS = /Macintosh/i.test(ua)
+        && navigator.maxTouchPoints > 1
+        && window.matchMedia('(hover: none), (pointer: coarse)').matches;
+      root.classList.toggle('platform-ios', isIOS || isIPadOS);
     })();
   </script>
   <link rel="manifest" href="manifest.json">
@@ -191,6 +188,7 @@
         <div class="photo-folder-row" id="photo-folder-row">
           <button type="button" class="btn-action folder-picker-btn" id="btn-add-photo-folder-native" hidden>Incluir pasta</button>
           <label for="cfg-photo-folder-fallback" class="btn-action folder-picker-btn" id="btn-add-photo-folder-fallback">Incluir pasta</label>
+          <label for="cfg-photo-gallery-ios" class="btn-action folder-picker-btn" id="btn-add-photo-gallery-ios" hidden>Incluir fotos da galeria</label>
           <div id="linked-folders-panel" class="linked-folders-panel">
             <p id="linked-folders-empty" class="linked-folders-empty settings-hint">Inclua uma ou mais pastas para exibir fotos.</p>
             <ul id="linked-folders-list" class="linked-folders-list" aria-live="polite"></ul>
@@ -316,8 +314,8 @@
   </div>
 
   <input type="file" id="cfg-photo-folder-fallback" class="folder-picker-input" tabindex="-1" webkitdirectory directory multiple>
+  <input type="file" id="cfg-photo-gallery-ios" class="folder-picker-input" tabindex="-1" accept="image/*" multiple>
 
-  <script src="js/heic2any.min.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

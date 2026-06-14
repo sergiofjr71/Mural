@@ -269,6 +269,11 @@ async function updateFolderPermissionBanner() {
   const banner = document.getElementById('folder-permission-banner');
   if (!banner) return;
 
+  if (isAppleMobileDevice()) {
+    banner.classList.add('hidden');
+    return;
+  }
+
   const hasPersistedFolders = State.linkedFolders.some((folder) => folder.handle);
   if (!usesFolderSource() || !hasPersistedFolders) {
     banner.classList.add('hidden');
@@ -465,6 +470,12 @@ function isImageFileName(name) {
   return IMAGE_FILE_RE.test(name || '');
 }
 
+function isDisplayableImageFile(file) {
+  if (!file) return false;
+  if (isImageFileName(file.name)) return true;
+  return (file.type || '').startsWith('image/');
+}
+
 const HEIC_FILE_RE = /\.(heic|heif)$/i;
 
 function isHeicFile(file) {
@@ -474,8 +485,44 @@ function isHeicFile(file) {
   return HEIC_FILE_RE.test(name) || type.includes('heic') || type.includes('heif');
 }
 
+let heic2anyLoadPromise = null;
+
+const HEIC2ANY_SCRIPT_URLS = [
+  'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js',
+  new URL('js/heic2any.min.js', window.location.href).href,
+];
+
 function heic2anyAvailable() {
   return typeof heic2any === 'function';
+}
+
+function loadExternalScript(url) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = url;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`script load failed: ${url}`));
+    document.head.appendChild(script);
+  });
+}
+
+function loadHeic2anyLibrary() {
+  if (heic2anyAvailable()) return Promise.resolve();
+  if (!heic2anyLoadPromise) {
+    heic2anyLoadPromise = (async () => {
+      for (const url of HEIC2ANY_SCRIPT_URLS) {
+        try {
+          await loadExternalScript(url);
+          if (heic2anyAvailable()) return;
+        } catch (e) {
+          console.warn('loadHeic2anyLibrary:', url, e);
+        }
+      }
+      throw new Error('heic2any indisponível');
+    })();
+  }
+  return heic2anyLoadPromise;
 }
 
 async function convertHeicToDisplayBlob(file, { thumbnail = false } = {}) {
@@ -493,6 +540,12 @@ async function createDisplayObjectUrlFromFile(file, { thumbnail = false } = {}) 
   if (!file) return null;
 
   if (isHeicFile(file)) {
+    try {
+      await loadHeic2anyLibrary();
+    } catch (e) {
+      console.warn('loadHeic2anyLibrary:', e);
+      return null;
+    }
     if (!heic2anyAvailable()) {
       console.warn('heic2any não carregado');
       return null;
@@ -520,6 +573,13 @@ function revokeClockPhotoObjectUrl() {
     revokeObjectUrl(clockPhotoObjectUrl);
     clockPhotoObjectUrl = null;
   }
+}
+
+function isUsableImageSrc(src) {
+  return typeof src === 'string'
+    && src.length > 0
+    && src !== 'undefined'
+    && (src.startsWith('blob:') || src.startsWith('data:image/') || /^https?:/i.test(src));
 }
 
 function revokePreviewObjectUrls() {
@@ -634,7 +694,7 @@ async function getFolderImageEntries(onProgress) {
       continue;
     }
     for (const file of folder.files) {
-      if (!isImageFileName(file.name)) continue;
+      if (!isDisplayableImageFile(file)) continue;
       const rel = file.webkitRelativePath || file.name;
       entries.push({
         path: `${folder.id}::${rel}`,
@@ -1119,7 +1179,12 @@ async function readFolderImageAtIndex(index, retry = 0) {
   }
 }
 
+function isAppleMobileDevice() {
+  return document.documentElement.classList.contains('platform-ios');
+}
+
 function supportsDirectoryPicker() {
+  if (isAppleMobileDevice()) return false;
   return (
     'showDirectoryPicker' in window &&
     window.isSecureContext &&
@@ -1131,19 +1196,66 @@ function getFolderPickerInput() {
   return document.getElementById('cfg-photo-folder-fallback');
 }
 
+function getGalleryPickerInput() {
+  return document.getElementById('cfg-photo-gallery-ios');
+}
+
 function updateFolderPickerButtons() {
   const nativeBtn = document.getElementById('btn-add-photo-folder-native');
   const fallbackLabel = document.getElementById('btn-add-photo-folder-fallback');
+  const galleryLabel = document.getElementById('btn-add-photo-gallery-ios');
   if (!nativeBtn || !fallbackLabel) return;
 
+  document.documentElement.classList.toggle('platform-ios', isAppleMobileDevice());
+
+  if (isAppleMobileDevice()) {
+    nativeBtn.hidden = true;
+    fallbackLabel.hidden = true;
+    if (galleryLabel) galleryLabel.hidden = false;
+    return;
+  }
+
+  if (galleryLabel) galleryLabel.hidden = true;
+  nativeBtn.textContent = 'Incluir pasta';
   const useNative = supportsDirectoryPicker();
   nativeBtn.hidden = !useNative;
   fallbackLabel.hidden = useNative;
 }
 
+function openGalleryPicker() {
+  const input = getGalleryPickerInput();
+  if (!input) {
+    showToast('Seletor de fotos indisponível neste dispositivo');
+    return;
+  }
+  input.click();
+}
+
+function openFolderPickerFallback() {
+  const input = getFolderPickerInput();
+  if (!input) {
+    showToast('Seletor de pasta indisponível neste navegador');
+    return;
+  }
+  input.click();
+}
+
+function openFolderPicker() {
+  if (isAppleMobileDevice()) {
+    openGalleryPicker();
+    return;
+  }
+  if (supportsDirectoryPicker()) {
+    void pickPhotoFolderNative();
+    return;
+  }
+  openFolderPickerFallback();
+}
+
 async function afterFolderAdded({ notify = true } = {}) {
   renderLinkedFoldersList();
   renderFolderInfo();
+  updateFolderPickerButtons();
   updatePhotoActionButtons();
 
   let count = 0;
@@ -1190,23 +1302,6 @@ async function bindFolderHandle(dir) {
   }
 }
 
-function openFolderPickerFallback() {
-  const input = getFolderPickerInput();
-  if (!input) {
-    showToast('Seletor de pasta indisponível neste navegador');
-    return;
-  }
-  input.click();
-}
-
-function openFolderPicker() {
-  if (supportsDirectoryPicker()) {
-    void pickPhotoFolderNative();
-    return;
-  }
-  openFolderPickerFallback();
-}
-
 async function pickPhotoFolderNative() {
   if (folderPickInProgress) {
     showToast('Aguarde o processamento da pasta anterior');
@@ -1231,6 +1326,22 @@ async function pickPhotoFolderNative() {
   await bindFolderHandle(dir);
 }
 
+async function handleGalleryPickerInput(input) {
+  if (folderPickInProgress) {
+    showToast('Aguarde o processamento da pasta anterior');
+    return;
+  }
+
+  const files = Array.from(input.files || []);
+  input.value = '';
+  if (!files.length) {
+    showToast('Nenhuma foto selecionada');
+    return;
+  }
+
+  void applySessionFolder(files, { name: 'Galeria de Fotos' });
+}
+
 async function handleFolderFallbackInput(input) {
   if (folderPickInProgress) {
     showToast('Aguarde o processamento da pasta anterior');
@@ -1249,14 +1360,22 @@ async function handleFolderFallbackInput(input) {
 
 function setupFolderPickerUi() {
   const input = getFolderPickerInput();
-  if (!input) return;
+  const galleryInput = getGalleryPickerInput();
+  if (!input && !galleryInput) return;
 
   updateFolderPickerButtons();
 
-  if (!input.dataset.bound) {
+  if (input && !input.dataset.bound) {
     input.dataset.bound = '1';
     input.addEventListener('change', () => {
       void handleFolderFallbackInput(input);
+    });
+  }
+
+  if (galleryInput && !galleryInput.dataset.bound) {
+    galleryInput.dataset.bound = '1';
+    galleryInput.addEventListener('change', () => {
+      void handleGalleryPickerInput(galleryInput);
     });
   }
 
@@ -1268,17 +1387,27 @@ function setupFolderPickerUi() {
       openFolderPicker();
     });
   }
+
+  const fallbackLabel = document.getElementById('btn-add-photo-folder-fallback');
+  if (fallbackLabel && !fallbackLabel.dataset.bound) {
+    fallbackLabel.dataset.bound = '1';
+    fallbackLabel.addEventListener('click', (e) => {
+      e.preventDefault();
+      openFolderPicker();
+    });
+  }
 }
 
-async function applySessionFolder(files) {
+async function applySessionFolder(files, { name } = {}) {
   const allFiles = Array.from(files);
   if (!allFiles.length) return false;
 
-  const root = allFiles[0].webkitRelativePath?.split('/')[0]
+  const root = name
+    || allFiles[0].webkitRelativePath?.split('/')[0]
     || allFiles[0].name
     || 'Pasta';
 
-  const imageFiles = allFiles.filter((file) => isImageFileName(file.name));
+  const imageFiles = allFiles.filter((file) => isDisplayableImageFile(file));
 
   folderPickInProgress = true;
   try {
@@ -1288,7 +1417,9 @@ async function applySessionFolder(files) {
     await afterFolderAdded({ notify: true });
 
     if (!imageFiles.length) {
-      showToast(`Pasta incluída, mas sem imagens jpg/png/gif/webp/heic`);
+      showToast('Nenhuma imagem compatível selecionada (jpg, png, gif, webp, heic)');
+    } else if (isAppleMobileDevice()) {
+      showToast('Fotos da galeria incluídas — válidas nesta sessão');
     } else if (!supportsDirectoryPicker()) {
       showToast('Pasta válida só nesta sessão — abra em Chrome/Edge (https) para salvar');
     }
@@ -1837,7 +1968,7 @@ function setupClockNavAutoReveal() {
   clockMode.addEventListener('touchstart', showClockNavArrows, { passive: true });
 }
 
-async function updateClockPhoto() {
+async function updateClockPhoto(skipAttempts = 0) {
   const img = document.getElementById('clock-photo-img');
   const empty = document.getElementById('clock-photo-empty');
   if (!img) return;
@@ -1852,9 +1983,7 @@ async function updateClockPhoto() {
     return;
   }
 
-  if (clockPhotoIndex >= count) clockPhotoIndex = 0;
-  const { src } = await resolvePhotoAtIndex(clockPhotoIndex % count);
-  if (!src) {
+  if (skipAttempts >= count) {
     revokeClockPhotoObjectUrl();
     img.removeAttribute('src');
     img.style.opacity = '0';
@@ -1863,7 +1992,12 @@ async function updateClockPhoto() {
     return;
   }
 
-  if (empty) empty.style.display = 'none';
+  if (clockPhotoIndex >= count) clockPhotoIndex = 0;
+  const { src } = await resolvePhotoAtIndex(clockPhotoIndex % count);
+  if (!isUsableImageSrc(src)) {
+    clockPhotoIndex = (clockPhotoIndex + 1) % count;
+    return updateClockPhoto(skipAttempts + 1);
+  }
 
   revokeClockPhotoObjectUrl();
   if (src.startsWith('blob:')) {
@@ -1875,13 +2009,15 @@ async function updateClockPhoto() {
   loader.onload = () => {
     img.src = src;
     img.style.opacity = '1';
+    if (empty) empty.style.display = 'none';
   };
   loader.onerror = () => {
     console.warn('clock photo failed to load');
     revokeClockPhotoObjectUrl();
     img.removeAttribute('src');
     img.style.opacity = '0';
-    if (empty) empty.style.display = 'flex';
+    clockPhotoIndex = (clockPhotoIndex + 1) % count;
+    void updateClockPhoto(skipAttempts + 1);
   };
   loader.src = src;
   await updateClockPhotoNav();
@@ -2564,12 +2700,9 @@ function syncPhotoColHeight() {
   const col = document.getElementById('clock-photo-col');
   if (!wrapper || !col) return;
 
-  const layoutWidth = wrapper.offsetWidth;
-  const visualWidth = wrapper.getBoundingClientRect().width;
-  const layoutGap = Math.max(0, Math.round(layoutWidth - visualWidth));
-
-  col.style.marginLeft = layoutGap ? `${-layoutGap}px` : '0';
-  col.style.height = `${wrapper.getBoundingClientRect().height}px`;
+  const height = Math.max(200, Math.round(wrapper.getBoundingClientRect().height));
+  col.style.height = `${height}px`;
+  col.style.marginLeft = '0';
 }
 
 async function init() {
