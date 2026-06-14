@@ -147,6 +147,13 @@
       </button>
     </nav>
 
+    <button type="button" id="btn-settings-fab" class="settings-fab" aria-label="Configurações" title="Configurações">
+      <svg class="settings-fab-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.77 1.05 1.41 1.11H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </button>
+
   </div>
 
   <!-- PAINEL DE CONFIGURAÇÕES -->
@@ -157,8 +164,12 @@
         <button id="btn-close-settings" aria-label="Fechar">✕</button>
       </div>
 
-      <div class="settings-section">
-        <h3>Clima</h3>
+      <div class="settings-section" data-section="weather">
+        <button type="button" class="settings-section-toggle" aria-expanded="true" aria-controls="settings-section-weather">
+          <h3>Clima</h3>
+          <span class="settings-section-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div id="settings-section-weather" class="settings-section-body">
         <label>Cidade
           <input type="text" id="cfg-city" placeholder="Ex: São Paulo" autocomplete="off">
         </label>
@@ -167,21 +178,33 @@
         </label>
         <p class="settings-hint">Chave gratuita em <strong>openweathermap.org/api</strong> — plano Free é suficiente</p>
         <button class="btn-action" id="btn-save-weather">Salvar e atualizar clima</button>
+        </div>
       </div>
 
-      <div class="settings-section">
-        <h3>Fotos</h3>
+      <div class="settings-section" data-section="photos">
+        <button type="button" class="settings-section-toggle" aria-expanded="true" aria-controls="settings-section-photos">
+          <h3>Fotos</h3>
+          <span class="settings-section-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div id="settings-section-photos" class="settings-section-body">
         <p class="settings-hint">Inclua <strong>várias pastas</strong> locais. O app grava o acesso à pasta (nome e permissão) — nada é importado. À meia-noite relê as pastas e monta uma nova lista aleatória de fotos.</p>
         <div class="photo-folder-row" id="photo-folder-row">
-          <ul id="linked-folders-list" class="linked-folders-list" aria-live="polite"></ul>
-          <p id="linked-folders-empty" class="linked-folders-empty">Nenhuma pasta vinculada</p>
-          <button type="button" class="btn-action" id="btn-add-photo-folder">Incluir pasta</button>
-          <input type="file" id="cfg-photo-folder-fallback" class="sr-only" tabindex="-1" webkitdirectory directory multiple aria-hidden="true">
+          <button type="button" class="btn-action folder-picker-btn" id="btn-add-photo-folder-native" hidden>Incluir pasta</button>
+          <label for="cfg-photo-folder-fallback" class="btn-action folder-picker-btn" id="btn-add-photo-folder-fallback">Incluir pasta</label>
+          <div id="linked-folders-panel" class="linked-folders-panel">
+            <p id="linked-folders-empty" class="linked-folders-empty settings-hint">Inclua uma ou mais pastas para exibir fotos.</p>
+            <ul id="linked-folders-list" class="linked-folders-list" aria-live="polite"></ul>
+          </div>
         </div>
-        <div id="folder-source-info"></div>
-        <div id="photos-preview"></div>
-        <button type="button" class="btn-action btn-action--compact" id="btn-rescan-folders" disabled>Releitura das pastas</button>
-        <button class="btn-action btn-danger" id="btn-clear-photos">Remover todas as pastas</button>
+        <div id="folder-permission-banner" class="folder-permission-banner hidden" role="status">
+          <p class="settings-hint">Se necessário, autorize o acesso uma vez — o navegador guarda a permissão para este site.</p>
+          <button type="button" class="btn-action btn-action--compact" id="btn-grant-folder-access">Autorizar acesso às pastas</button>
+        </div>
+        <div class="photo-actions-row">
+          <button type="button" class="btn-action btn-action--compact photo-actions-btn" id="btn-show-photo-list" disabled>Lista de Fotos</button>
+          <button type="button" class="btn-action btn-action--compact photo-actions-btn" id="btn-rescan-folders" disabled>Releitura das pastas</button>
+        </div>
+        <div id="photo-playlist-panel" class="photo-playlist-panel hidden" aria-live="polite"></div>
         <label>Intervalo do slideshow
           <select id="cfg-interval">
             <option value="5000">5 segundos</option>
@@ -201,10 +224,15 @@
             <option value="random">Randômico</option>
           </select>
         </label>
+        </div>
       </div>
 
-      <div class="settings-section">
-        <h3>Câmeras ao vivo</h3>
+      <div class="settings-section" data-section="cameras">
+        <button type="button" class="settings-section-toggle" aria-expanded="true" aria-controls="settings-section-cameras">
+          <h3>Câmeras ao vivo</h3>
+          <span class="settings-section-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div id="settings-section-cameras" class="settings-section-body">
         <p class="settings-hint">Adicione URLs de streams públicos (formato MJPEG, HLS ou imagem estática)</p>
         <div id="cameras-list"></div>
         <div class="cam-input-row">
@@ -213,10 +241,15 @@
           <button class="btn-action" id="btn-add-cam">Adicionar</button>
         </div>
         <p class="settings-hint">Sugestões: câmeras de trânsito da CET-SP, webcams públicas, câmeras de praias da Prefeitura</p>
+        </div>
       </div>
 
-      <div class="settings-section">
-        <h3>Display</h3>
+      <div class="settings-section" data-section="display">
+        <button type="button" class="settings-section-toggle" aria-expanded="true" aria-controls="settings-section-display">
+          <h3>Display</h3>
+          <span class="settings-section-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div id="settings-section-display" class="settings-section-body">
         <label class="toggle-label">
           <span>Formato 24 horas</span>
           <input type="checkbox" id="cfg-24h" checked>
@@ -238,10 +271,17 @@
           <input type="checkbox" id="cfg-wakelock" checked>
           <span class="toggle-track"></span>
         </label>
+        </div>
       </div>
 
-      <div class="settings-section">
+      <div class="settings-section" data-section="tools">
+        <button type="button" class="settings-section-toggle" aria-expanded="true" aria-controls="settings-section-tools">
+          <h3>Geral</h3>
+          <span class="settings-section-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div id="settings-section-tools" class="settings-section-body">
         <button class="btn-action btn-fullscreen" id="btn-fullscreen">Tela cheia</button>
+        </div>
       </div>
 
     </div>
@@ -275,6 +315,9 @@
     </div>
   </div>
 
+  <input type="file" id="cfg-photo-folder-fallback" class="folder-picker-input" tabindex="-1" webkitdirectory directory multiple>
+
+  <script src="js/heic2any.min.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
