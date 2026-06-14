@@ -313,13 +313,15 @@ html, body {
   flex-direction: column;
   gap: 10px;
   width: 100%;
+  align-self: stretch;
 }
 
 #weather-current {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
+  width: 100%;
 }
 
 #weather-current-left {
@@ -327,6 +329,8 @@ html, body {
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
+  flex: 1;
+  min-width: 0;
 }
 
 #weather-city-name {
@@ -366,26 +370,43 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
-  padding-top: 4px;
+  justify-content: flex-start;
+  gap: 10px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+#weather-current-right .weather-meta-row {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+#weather-current-right .weather-meta-label {
+  font-size: 14px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+#weather-current-right .weather-meta-row span:last-child {
+  font-size: 21px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  min-width: 2.5ch;
+  text-align: right;
 }
 
 .weather-meta-row {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 1px;
-}
-.weather-meta-label {
-  font-size: clamp(9px, 1.4vw, 11px);
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.weather-meta-row span:last-child {
-  font-size: clamp(13px, 2.4vw, 18px);
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
 }
 
 /* ── FORECAST ROWS ── */
@@ -943,6 +964,105 @@ input[type="file"] {
 .photo-url-field--full {
   width: 100%;
 }
+#btn-rescan-folders {
+  width: 100%;
+  margin-top: 8px;
+}
+
+#btn-rescan-folders:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.folder-photo-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.folder-photo-list li {
+  font-size: 13px;
+  color: var(--text-mid);
+  padding: 6px 10px;
+  background: var(--bg3);
+  border-radius: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-photo-list-more {
+  color: var(--text-dim) !important;
+  font-style: italic;
+  background: transparent !important;
+  padding-left: 4px !important;
+}
+
+.linked-folders-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.linked-folder-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.linked-folder-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.linked-folder-kind {
+  flex-shrink: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.linked-folder-remove {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.linked-folder-remove:hover {
+  background: rgba(255, 80, 80, 0.12);
+}
+
+.linked-folders-empty {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
 .photo-folder-row {
   margin-top: 8px;
   display: flex;

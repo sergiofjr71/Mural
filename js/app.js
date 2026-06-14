@@ -8,10 +8,7 @@
 const State = {
   mode: 'clock',
   photos: [],        // [{ name, url }] — usado quando não há pasta vinculada
-  folderHandle: null,
-  folderName: '',
-  sessionFolderFiles: [],
-  sessionFolderName: '',
+  linkedFolders: [], // [{ id, name, handle?, files? }]
   folderPlaylist: [],
   folderPlaylistDate: '',
   cameras: [],       // [{name, url}]
@@ -59,7 +56,7 @@ function loadConfig() {
 // ─── FOTOS (pasta vinculada ou URLs) ─────────
 const IMAGE_FILE_RE = /\.(jpe?g|png|gif|webp|bmp|avif|heic|heif)$/i;
 const PHOTO_DB_NAME = 'SmartDisplay';
-const PHOTO_DB_VERSION = 2;
+const PHOTO_DB_VERSION = 3;
 let photoDbPromise = null;
 let clockPhotoObjectUrl = null;
 let slidePhotoObjectUrls = { a: null, b: null };
@@ -95,54 +92,168 @@ function idbRequestToPromise(request) {
   });
 }
 
-async function saveFolderHandle(handle, name) {
+function generateFolderId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `folder_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function usesFolderSource() {
+  return State.linkedFolders.length > 0;
+}
+
+function findLinkedFolderByName(name) {
+  return State.linkedFolders.find((folder) => folder.name === name);
+}
+
+async function persistLinkedFolderHandles() {
+  const folders = State.linkedFolders
+    .filter((folder) => folder.handle)
+    .map((folder) => ({ id: folder.id, name: folder.name, handle: folder.handle }));
+
   const db = await openPhotoDB();
   const tx = db.transaction('folder', 'readwrite');
-  tx.objectStore('folder').put({ handle, name }, 'primary');
+  tx.objectStore('folder').put({ folders }, 'linked');
   await idbRequestToPromise(tx);
-  State.folderHandle = handle;
-  State.folderName = name;
+
+  saveLinkedFoldersMeta();
+}
+
+function saveLinkedFoldersMeta() {
   try {
-    localStorage.setItem('sd_folder_name', name);
+    localStorage.setItem('sd_folder_names', JSON.stringify(
+      State.linkedFolders.map((folder) => folder.name)
+    ));
+    localStorage.setItem('sd_linked_folders_meta', JSON.stringify(
+      State.linkedFolders.map((folder) => ({
+        id: folder.id,
+        name: folder.name,
+        persisted: Boolean(folder.handle),
+      }))
+    ));
   } catch {}
 }
 
-async function loadStoredFolderHandle() {
+async function migrateLegacyFolderRecord(store) {
+  const legacy = await idbRequestToPromise(store.get('primary'));
+  if (!legacy?.handle) return null;
+  const migrated = {
+    folders: [{ id: generateFolderId(), name: legacy.name || 'Pasta', handle: legacy.handle }],
+  };
+  await idbRequestToPromise(store.put(migrated, 'linked'));
+  await idbRequestToPromise(store.delete('primary'));
+  return migrated;
+}
+
+async function loadStoredFolderHandles() {
   try {
     const db = await openPhotoDB();
-    const record = await idbRequestToPromise(db.transaction('folder', 'readonly').objectStore('folder').get('primary'));
-    if (!record?.handle) return false;
+    const store = db.transaction('folder', 'readwrite').objectStore('folder');
+    let record = await idbRequestToPromise(store.get('linked'));
+    if (!record?.folders?.length) {
+      record = await migrateLegacyFolderRecord(store);
+    }
+    if (!record?.folders?.length) return false;
 
-    const permission = await record.handle.queryPermission({ mode: 'read' });
-    if (permission !== 'granted') {
-      const requested = await record.handle.requestPermission({ mode: 'read' });
-      if (requested !== 'granted') return false;
+    const loaded = [];
+    for (const folder of record.folders) {
+      if (!folder?.handle) continue;
+
+      const permission = await folder.handle.queryPermission({ mode: 'read' });
+      if (permission !== 'granted') {
+        const requested = await folder.handle.requestPermission({ mode: 'read' });
+        if (requested !== 'granted') continue;
+      }
+
+      loaded.push({
+        id: folder.id || generateFolderId(),
+        name: folder.name || 'Pasta',
+        handle: folder.handle,
+      });
     }
 
-    State.folderHandle = record.handle;
-    State.folderName = record.name || localStorage.getItem('sd_folder_name') || 'Pasta';
-    return true;
+    State.linkedFolders = loaded;
+    if (loaded.length) {
+      await persistLinkedFolderHandles();
+      saveLinkedFoldersMeta();
+    }
+    return loaded.length > 0;
   } catch (e) {
-    console.warn('loadStoredFolderHandle:', e);
+    console.warn('loadStoredFolderHandles:', e);
     return false;
   }
 }
 
-async function clearStoredFolderHandle() {
-  State.folderHandle = null;
-  State.folderName = '';
-  State.sessionFolderFiles = [];
-  State.sessionFolderName = '';
+async function clearAllLinkedFolders() {
+  State.linkedFolders = [];
   clearFolderPlaylist();
   try {
+    localStorage.removeItem('sd_folder_names');
     localStorage.removeItem('sd_folder_name');
+    localStorage.removeItem('sd_linked_folders_meta');
     const db = await openPhotoDB();
     const tx = db.transaction('folder', 'readwrite');
-    tx.objectStore('folder').delete('primary');
+    const store = tx.objectStore('folder');
+    store.delete('linked');
+    store.delete('primary');
     await idbRequestToPromise(tx);
   } catch (e) {
-    console.warn('clearStoredFolderHandle:', e);
+    console.warn('clearAllLinkedFolders:', e);
   }
+}
+
+async function removeLinkedFolder(folderId) {
+  State.linkedFolders = State.linkedFolders.filter((folder) => folder.id !== folderId);
+  if (!State.linkedFolders.some((folder) => folder.handle)) {
+    try {
+      const db = await openPhotoDB();
+      const tx = db.transaction('folder', 'readwrite');
+      tx.objectStore('folder').delete('linked');
+      await idbRequestToPromise(tx);
+    } catch {}
+  } else {
+    await persistLinkedFolderHandles();
+  }
+
+  if (!usesFolderSource()) {
+    clearFolderPlaylist();
+    return;
+  }
+
+  saveLinkedFoldersMeta();
+  await refreshFolderPlaylist({ notify: false, resetIndex: true });
+}
+
+async function addLinkedFolderHandle(handle, name) {
+  if (findLinkedFolderByName(name)) {
+    showToast(`A pasta "${name}" já está incluída`);
+    return false;
+  }
+
+  State.linkedFolders.push({
+    id: generateFolderId(),
+    name,
+    handle,
+  });
+  await persistLinkedFolderHandles();
+  saveLinkedFoldersMeta();
+  return true;
+}
+
+async function addLinkedSessionFolder(name, files) {
+  if (findLinkedFolderByName(name)) {
+    showToast(`A pasta "${name}" já está incluída`);
+    return false;
+  }
+
+  State.linkedFolders.push({
+    id: generateFolderId(),
+    name,
+    files,
+  });
+  saveLinkedFoldersMeta();
+  return true;
 }
 
 function isImageFileName(name) {
@@ -167,31 +278,42 @@ function revokePreviewObjectUrls() {
   previewObjectUrls.clear();
 }
 
-async function collectImageEntries(dirHandle, basePath = '') {
+async function collectImageEntries(dirHandle, folderId, basePath = '') {
   const entries = [];
   for await (const entry of dirHandle.values()) {
     const entryPath = `${basePath}${entry.name}`;
     if (entry.kind === 'file' && isImageFileName(entry.name)) {
-      entries.push({ path: entryPath, getFile: () => entry.getFile() });
+      entries.push({
+        path: `${folderId}::${entryPath}`,
+        getFile: () => entry.getFile(),
+      });
     } else if (entry.kind === 'directory') {
-      entries.push(...await collectImageEntries(entry, `${entryPath}/`));
+      entries.push(...await collectImageEntries(entry, folderId, `${entryPath}/`));
     }
   }
   return entries;
 }
 
 async function getFolderImageEntries() {
-  if (State.sessionFolderFiles.length) {
-    return State.sessionFolderFiles
-      .filter((file) => isImageFileName(file.name))
-      .map((file) => ({
-        path: file.webkitRelativePath || file.name,
+  const entries = [];
+
+  for (const folder of State.linkedFolders) {
+    if (folder.handle) {
+      entries.push(...await collectImageEntries(folder.handle, folder.id));
+      continue;
+    }
+
+    if (!folder.files?.length) continue;
+    for (const file of folder.files) {
+      if (!isImageFileName(file.name)) continue;
+      const rel = file.webkitRelativePath || file.name;
+      entries.push({
+        path: `${folder.id}::${rel}`,
         getFile: async () => file,
-      }));
+      });
+    }
   }
 
-  if (!State.folderHandle) return [];
-  const entries = await collectImageEntries(State.folderHandle);
   entries.sort((a, b) => a.path.localeCompare(b.path, 'pt-BR', { numeric: true }));
   return entries;
 }
@@ -266,6 +388,7 @@ async function syncFolderPlaylistWithDisk() {
 async function refreshFolderPlaylist({ notify = true, resetIndex = true } = {}) {
   if (!usesFolderSource()) {
     clearFolderPlaylist();
+    updateRescanFoldersButton();
     return 0;
   }
 
@@ -281,11 +404,33 @@ async function refreshFolderPlaylist({ notify = true, resetIndex = true } = {}) 
   }
 
   if (notify) {
-    const label = State.folderName ? `Pasta "${State.folderName}": ` : '';
-    showToast(`${label}${paths.length} foto${paths.length === 1 ? '' : 's'} em ordem aleatória`);
+    const folderCount = State.linkedFolders.length;
+    const folderLabel = folderCount === 1
+      ? `Pasta "${State.linkedFolders[0].name}"`
+      : `${folderCount} pastas`;
+    showToast(`${folderLabel}: ${paths.length} foto${paths.length === 1 ? '' : 's'} em ordem aleatória`);
   }
 
+  updateRescanFoldersButton();
   return paths.length;
+}
+
+async function rescanLinkedFolders({ notify = true, resetIndex = true } = {}) {
+  if (!usesFolderSource()) {
+    if (notify) showToast('Nenhuma pasta vinculada');
+    updateRescanFoldersButton();
+    return 0;
+  }
+
+  const count = await refreshFolderPlaylist({ notify, resetIndex });
+  await refreshPhotoViews();
+  return count;
+}
+
+function updateRescanFoldersButton() {
+  const btn = document.getElementById('btn-rescan-folders');
+  if (!btn) return;
+  btn.disabled = !usesFolderSource();
 }
 
 async function ensureFolderPlaylistForToday() {
@@ -326,10 +471,6 @@ async function readFolderImageAtIndex(index, retry = 0) {
   };
 }
 
-function usesFolderSource() {
-  return Boolean(State.folderHandle) || State.sessionFolderFiles.length > 0;
-}
-
 function supportsDirectoryPicker() {
   return (
     'showDirectoryPicker' in window &&
@@ -339,11 +480,10 @@ function supportsDirectoryPicker() {
 }
 
 async function bindFolderHandle(dir) {
-  State.sessionFolderFiles = [];
-  State.sessionFolderName = '';
-  await saveFolderHandle(dir, dir.name);
+  const added = await addLinkedFolderHandle(dir, dir.name);
+  if (!added) return;
   await refreshFolderPlaylist({ notify: true, resetIndex: true });
-  syncPhotoFolderInput();
+  renderLinkedFoldersList();
   renderFolderInfo();
   await refreshPhotoViews();
 }
@@ -360,7 +500,7 @@ async function pickPhotoFolderNative() {
   if (folderPickInProgress) return;
   folderPickInProgress = true;
   try {
-    showToast('Navegue até a pasta e clique em Abrir');
+    showToast('Navegue até a pasta e clique em Abrir para incluí-la');
     const dir = await window.showDirectoryPicker({ mode: 'read' });
     await bindFolderHandle(dir);
   } catch (e) {
@@ -391,18 +531,8 @@ async function handleFolderFallbackInput(input) {
 }
 
 function setupFolderPickerUi() {
-  const nativeBtn = document.getElementById('btn-choose-photo-folder');
-  const fallbackLabel = document.getElementById('btn-choose-photo-folder-fallback');
   const input = document.getElementById('cfg-photo-folder-fallback');
-  if (!nativeBtn || !fallbackLabel || !input) return;
-
-  if (supportsDirectoryPicker()) {
-    nativeBtn.hidden = false;
-    fallbackLabel.hidden = true;
-  } else {
-    nativeBtn.hidden = true;
-    fallbackLabel.hidden = false;
-  }
+  if (!input) return;
 
   input.addEventListener('change', () => {
     void handleFolderFallbackInput(input);
@@ -420,21 +550,11 @@ async function applySessionFolder(files) {
   }
 
   const root = imageFiles[0].webkitRelativePath?.split('/')[0] || 'Pasta';
-  State.folderHandle = null;
-  State.sessionFolderFiles = imageFiles;
-  State.sessionFolderName = root;
-  State.folderName = root;
-
-  try {
-    localStorage.setItem('sd_folder_name', root);
-    const db = await openPhotoDB();
-    const tx = db.transaction('folder', 'readwrite');
-    tx.objectStore('folder').delete('primary');
-    await idbRequestToPromise(tx);
-  } catch {}
+  const added = await addLinkedSessionFolder(root, imageFiles);
+  if (!added) return false;
 
   await refreshFolderPlaylist({ notify: true, resetIndex: true });
-  syncPhotoFolderInput();
+  renderLinkedFoldersList();
   renderFolderInfo();
   await refreshPhotoViews();
   return true;
@@ -474,8 +594,7 @@ function scheduleMidnightFolderRescan() {
   midnightRescanTimer = setTimeout(() => {
     void (async () => {
       if (usesFolderSource()) {
-        await refreshFolderPlaylist({ notify: true, resetIndex: true });
-        await refreshPhotoViews();
+        await rescanLinkedFolders({ notify: true, resetIndex: true });
       }
       scheduleMidnightFolderRescan();
     })();
@@ -492,21 +611,68 @@ function checkMidnightPlaylistRefresh() {
 
   lastMidnightCheckDate = today;
   if (usesFolderSource() && State.folderPlaylistDate !== today) {
-    void refreshFolderPlaylist({ notify: false, resetIndex: true }).then(() => refreshPhotoViews());
+    void rescanLinkedFolders({ notify: false, resetIndex: true });
   }
 }
 
-function syncPhotoFolderInput() {
-  const input = document.getElementById('cfg-photo-url');
-  if (!input) return;
-  input.value = usesFolderSource() ? State.folderName : '';
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function renderLinkedFoldersList() {
+  const list = document.getElementById('linked-folders-list');
+  const empty = document.getElementById('linked-folders-empty');
+  if (!list || !empty) return;
+
+  updateRescanFoldersButton();
+
+  if (!State.linkedFolders.length) {
+    list.innerHTML = '';
+    empty.hidden = false;
+    return;
+  }
+
+  empty.hidden = true;
+  list.innerHTML = State.linkedFolders.map((folder) => {
+    const safeName = escapeHtml(folder.name);
+    const kind = folder.handle ? 'salva neste dispositivo' : 'somente nesta sessão';
+    return `
+    <li class="linked-folder-item" data-folder-id="${folder.id}">
+      <span class="linked-folder-name" title="${safeName}">📁 ${safeName}</span>
+      <span class="linked-folder-kind">${kind}</span>
+      <button type="button" class="linked-folder-remove" data-folder-id="${folder.id}" title="Remover pasta" aria-label="Remover pasta ${safeName}">✕</button>
+    </li>
+  `;
+  }).join('');
+
+  list.querySelectorAll('.linked-folder-remove').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const folderId = btn.getAttribute('data-folder-id');
+      const folder = State.linkedFolders.find((item) => item.id === folderId);
+      if (!folder) return;
+      if (!confirm(`Remover a pasta "${folder.name}"?`)) return;
+
+      await removeLinkedFolder(folderId);
+      revokeClockPhotoObjectUrl();
+      revokePreviewObjectUrls();
+      renderLinkedFoldersList();
+      renderFolderInfo();
+      await refreshPhotoViews();
+      showToast(`Pasta "${folder.name}" removida`);
+    });
+  });
 }
 
 function renderFolderInfo() {
   const el = document.getElementById('folder-source-info');
-  if (!el) return;
+  renderLinkedFoldersList();
 
-  syncPhotoFolderInput();
+  if (!el) return;
 
   if (!usesFolderSource()) {
     el.innerHTML = '';
@@ -516,30 +682,8 @@ function renderFolderInfo() {
   el.innerHTML = `
     <div class="folder-source-meta">
       <small id="folder-photo-count" style="color:var(--text-dim)">Carregando...</small>
-      <div class="folder-source-actions">
-        <button type="button" class="btn-action btn-action--compact" id="btn-refresh-folder-photos">Releitura das fotos</button>
-        <button type="button" id="btn-clear-folder" title="Desvincular pasta">✕</button>
-      </div>
     </div>
   `;
-
-  document.getElementById('btn-refresh-folder-photos')?.addEventListener('click', () => {
-    void (async () => {
-      await refreshFolderPlaylist({ notify: true, resetIndex: true });
-      await refreshPhotoViews();
-    })();
-  });
-
-  document.getElementById('btn-clear-folder')?.addEventListener('click', async () => {
-    if (!confirm('Desvincular esta pasta?')) return;
-    await clearStoredFolderHandle();
-    revokeClockPhotoObjectUrl();
-    revokePreviewObjectUrls();
-    syncPhotoFolderInput();
-    renderFolderInfo();
-    await refreshPhotoViews();
-    showToast('Pasta desvinculada');
-  });
 }
 
 async function renderFolderPhotoCount() {
@@ -550,7 +694,9 @@ async function renderFolderPhotoCount() {
   const shuffledAt = State.folderPlaylistDate
     ? `Lista aleatória de ${State.folderPlaylistDate}`
     : 'Lista ainda não gerada';
-  countEl.textContent = `${count} foto${count === 1 ? '' : 's'} — ${shuffledAt}. Releitura automática à meia-noite.`;
+  const folderCount = State.linkedFolders.length;
+  const folderLabel = folderCount === 1 ? '1 pasta' : `${folderCount} pastas`;
+  countEl.textContent = `${folderLabel} · ${count} foto${count === 1 ? '' : 's'} — ${shuffledAt}. Releitura automática à meia-noite.`;
 }
 
 function isDisplayablePhotoUrl(url) {
@@ -618,7 +764,7 @@ function renderPhotosList() {
   list.innerHTML = '';
 
   if (usesFolderSource()) {
-    list.innerHTML = '<p class="settings-hint">Usando pasta vinculada. URLs abaixo são ignoradas enquanto a pasta estiver ativa.</p>';
+    list.innerHTML = '<p class="settings-hint">Usando pastas vinculadas. URLs abaixo são ignoradas enquanto houver pastas ativas.</p>';
     return;
   }
 
@@ -652,12 +798,26 @@ async function renderPhotosPreviews() {
   revokePreviewObjectUrls();
 
   if (!usesFolderSource()) {
-    preview.innerHTML = '<p class="settings-hint">Vincule uma pasta para exibir fotos.</p>';
+    preview.innerHTML = '<p class="settings-hint">Inclua uma ou mais pastas para exibir fotos.</p>';
     return;
   }
 
   await ensureFolderPlaylistForToday();
-  preview.innerHTML = `<p class="settings-hint">${State.folderPlaylist.length} foto${State.folderPlaylist.length === 1 ? '' : 's'} na ordem aleatória atual. Nada é importado.</p>`;
+  const entries = await getFolderImageEntries();
+  const total = entries.length;
+  const sample = State.folderPlaylist.slice(0, 8).map((path) => {
+    const fileName = (path.split('::').pop() || path).split('/').pop() || path;
+    return escapeHtml(fileName);
+  });
+
+  const listHtml = sample.length
+    ? `<ul class="folder-photo-list">${sample.map((name) => `<li>${name}</li>`).join('')}${total > sample.length ? `<li class="folder-photo-list-more">… e mais ${total - sample.length}</li>` : ''}</ul>`
+    : '<p class="settings-hint">Nenhuma imagem encontrada nas pastas vinculadas.</p>';
+
+  preview.innerHTML = `
+    <p class="settings-hint">${total} foto${total === 1 ? '' : 's'} encontrada${total === 1 ? '' : 's'} — exibidas em ordem aleatória na tela principal. Nada é importado.</p>
+    ${listHtml}
+  `;
 }
 
 async function refreshPhotoViews() {
@@ -1548,18 +1708,13 @@ function bindEvents() {
   });
   bindClockPhotoNavHighlight();
 
-  document.getElementById('btn-browse-photo-folder')?.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    openFolderPicker();
-  });
-  document.getElementById('btn-choose-photo-folder')?.addEventListener('click', (e) => {
+  document.getElementById('btn-add-photo-folder')?.addEventListener('click', (e) => {
     e.preventDefault();
     openFolderPicker();
   });
-  document.getElementById('photo-folder-picker')?.addEventListener('click', (e) => {
-    if (e.target.closest('#btn-browse-photo-folder')) return;
-    openFolderPicker();
+
+  document.getElementById('btn-rescan-folders')?.addEventListener('click', () => {
+    void rescanLinkedFolders({ notify: true, resetIndex: true });
   });
 
   document.getElementById('cfg-transition').addEventListener('change', e => {
@@ -1569,8 +1724,8 @@ function bindEvents() {
 
   document.getElementById('btn-clear-photos').addEventListener('click', () => {
     void (async () => {
-      if (!confirm('Desvincular a pasta de fotos?')) return;
-      await clearStoredFolderHandle();
+      if (!confirm('Remover todas as pastas vinculadas?')) return;
+      await clearAllLinkedFolders();
       revokeClockPhotoObjectUrl();
       revokePreviewObjectUrls();
       clockPhotoIndex = 0;
@@ -1578,7 +1733,7 @@ function bindEvents() {
       renderFolderInfo();
       await refreshPhotoViews();
       await renderSlideshowEmpty();
-      showToast('Pasta removida');
+      showToast('Pastas removidas');
     })();
   });
 
@@ -1652,8 +1807,9 @@ async function init() {
   loadFolderPlaylist();
   lastMidnightCheckDate = getTodayKey();
   await clearLegacyPhotoStorage();
-  await loadStoredFolderHandle();
+  await loadStoredFolderHandles();
   if (usesFolderSource()) await ensureFolderPlaylistForToday();
+  updateRescanFoldersButton();
   await refreshPhotoViews();
 
   bindEvents();
@@ -1688,9 +1844,12 @@ async function init() {
 // ─── SERVICE WORKER ───────────────────────────
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js')
-      .then(() => console.log('SW registrado'))
-      .catch(e => console.warn('SW erro:', e));
+    navigator.serviceWorker.register(new URL('sw.js', window.location.href))
+      .then((registration) => {
+        console.log('SW registrado');
+        registration.update();
+      })
+      .catch((e) => console.warn('SW erro:', e));
   });
 }
 
