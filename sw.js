@@ -3,7 +3,7 @@
    Cache-first para HTML; CSS/JS direto no navegador
    ============================================ */
 
-const CACHE_NAME = 'smartdisplay-v55';
+const CACHE_NAME = 'smartdisplay-v57';
 
 const STATIC_ASSETS = [
   './',

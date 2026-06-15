@@ -322,7 +322,7 @@ body.clock-nav-visible .clock-photo-nav:not(:disabled) .clock-photo-nav-icon,
 }
 
 #clock-date {
-  font-size: clamp(13px, 2.5vw, 20px);
+  font-size: clamp(16px, 2.5vw, 23px);
   font-weight: 300;
   color: var(--text-mid);
   margin-top: 12px;

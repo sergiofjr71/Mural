@@ -1753,61 +1753,114 @@ const WMO_DESC = {
 };
 const DIAS_CURTOS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 
-async function geocodeCity(cityName) {
-  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cityName)}&format=json&limit=1`;
-  const res = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' } });
+async function geocodeCityOpenMeteo(cityName) {
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=5&language=pt&format=json`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`geocoding ${res.status}`);
   const data = await res.json();
-  if (!data.length) throw new Error('cidade não encontrada');
-  return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+  const results = data.results || [];
+  if (!results.length) throw new Error('cidade não encontrada');
+  const pick = results[0];
+  return {
+    lat: pick.latitude,
+    lon: pick.longitude,
+    label: pick.name,
+  };
 }
 
-async function fetchWeather() {
+async function geocodeCityNominatim(cityName) {
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cityName)}&format=json&limit=1`;
+  const res = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' } });
+  if (!res.ok) throw new Error(`nominatim ${res.status}`);
+  const data = await res.json();
+  if (!data.length) throw new Error('cidade não encontrada');
+  return {
+    lat: parseFloat(data[0].lat),
+    lon: parseFloat(data[0].lon),
+    label: cityName.split(',')[0],
+  };
+}
+
+async function geocodeCity(cityName) {
+  try {
+    return await geocodeCityOpenMeteo(cityName);
+  } catch (e) {
+    console.warn('geocode open-meteo:', e);
+    return geocodeCityNominatim(cityName);
+  }
+}
+
+function hasValidCoords(lat, lon) {
+  return Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+}
+
+async function tryOpenWeatherCoords(city, apiKey) {
+  if (!apiKey) return null;
+  try {
+    const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&units=metric&lang=pt_br&appid=${apiKey}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn('OpenWeatherMap:', res.status);
+      return null;
+    }
+    const d = await res.json();
+    if (!d?.coord) return null;
+    return { lat: d.coord.lat, lon: d.coord.lon };
+  } catch (e) {
+    console.warn('OpenWeatherMap:', e);
+    return null;
+  }
+}
+
+async function fetchOpenMeteoForecast(lat, lon) {
+  const omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+    `&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code` +
+    `&daily=weather_code,temperature_2m_max,temperature_2m_min` +
+    `&hourly=temperature_2m,weather_code` +
+    `&timezone=auto&forecast_days=5`;
+  const omRes = await fetch(omUrl);
+  if (!omRes.ok) throw new Error(`open-meteo ${omRes.status}`);
+  return omRes.json();
+}
+
+async function fetchWeather(isRetry = false) {
   const { city, apiKey } = State.cfg;
   if (!city) {
-    updateWeatherUI({ icon:'🌡', temp:'--°', city:'(sem cidade)', desc:'selecione uma cidade', feels:'--°', humidity:'--%' });
+    updateWeatherUI({ icon:'🌡', temp:'--°', city:'(sem cidade)', desc:'selecione uma cidade', feels:'--°', humidity:'--%', daily: null, hourly: null });
     return;
   }
 
   try {
     let lat = State.cfg.lat;
     let lon = State.cfg.lon;
+    let displayCity = city.split(',')[0];
 
-    // Se tem API key OpenWeatherMap, usa ele para obter lat/lon e dados
-    if (apiKey) {
-      const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&units=metric&lang=pt_br&appid=${apiKey}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(res.status);
-      const d = await res.json();
-      lat = d.coord.lat; lon = d.coord.lon;
-      State.cfg.lat = lat; State.cfg.lon = lon;
+    if (!hasValidCoords(lat, lon)) {
+      const owm = await tryOpenWeatherCoords(city, apiKey);
+      if (owm) {
+        lat = owm.lat;
+        lon = owm.lon;
+      } else {
+        const coords = await geocodeCity(city);
+        lat = coords.lat;
+        lon = coords.lon;
+        if (coords.label) displayCity = coords.label;
+      }
+      State.cfg.lat = lat;
+      State.cfg.lon = lon;
       saveConfig();
     }
 
-    // Se ainda sem coordenadas, geocodifica via Nominatim
-    if (!lat || !lon) {
-      const coords = await geocodeCity(city);
-      lat = coords.lat; lon = coords.lon;
-      State.cfg.lat = lat; State.cfg.lon = lon;
-      saveConfig();
-    }
-
-    // Busca dados no Open-Meteo (sempre, com ou sem API key)
-    const omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-      `&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code` +
-      `&daily=weather_code,temperature_2m_max,temperature_2m_min` +
-      `&hourly=temperature_2m,weather_code` +
-      `&timezone=auto&forecast_days=5`;
-    const omRes = await fetch(omUrl);
-    if (!omRes.ok) throw new Error('open-meteo ' + omRes.status);
-    const om = await omRes.json();
-
+    const om = await fetchOpenMeteoForecast(lat, lon);
     const cur = om.current;
+    if (!cur) throw new Error('open-meteo sem dados atuais');
+
     const code = cur.weather_code;
     State.weatherData = {
       icon: WMO_ICONS[code] || '🌡',
       temp: Math.round(cur.temperature_2m) + '°',
       feels: Math.round(cur.apparent_temperature) + '°',
-      city: city.split(',')[0],
+      city: displayCity,
       desc: WMO_DESC[code] || 'Clima',
       humidity: cur.relative_humidity_2m + '%',
       daily: om.daily,
@@ -1815,9 +1868,24 @@ async function fetchWeather() {
       hourlyOffset: om.current.time,
     };
     updateWeatherUI(State.weatherData);
-  } catch(e) {
+  } catch (e) {
     console.warn('weather error:', e);
-    updateWeatherUI({ icon:'⚠️', temp:'--°', city: city.split(',')[0], desc:'erro ao buscar clima', feels:'--°', humidity:'--%' });
+    if (!isRetry) {
+      State.cfg.lat = null;
+      State.cfg.lon = null;
+      saveConfig();
+      return fetchWeather(true);
+    }
+    updateWeatherUI({
+      icon: '⚠️',
+      temp: '--°',
+      city: city.split(',')[0],
+      desc: 'erro ao buscar clima',
+      feels: '--°',
+      humidity: '--%',
+      daily: null,
+      hourly: null,
+    });
   }
 }
 
@@ -1835,13 +1903,15 @@ function updateWeatherUI(w) {
   renderDailyForecast(w.daily);
   renderHourlyForecast(w.hourly, w.hourlyOffset);
   updateCityNav();
-  // re-sincroniza após o clima renderizar (layout muda de tamanho)
-  requestAnimationFrame(syncPhotoColHeight);
 }
 
 function renderDailyForecast(daily) {
   const el = document.getElementById('weather-daily');
-  if (!el || !daily) return;
+  if (!el) return;
+  if (!daily) {
+    el.innerHTML = '';
+    return;
+  }
   el.innerHTML = '';
   const days = daily.time.slice(0, 5);
   days.forEach((dateStr, i) => {
@@ -1863,7 +1933,11 @@ function renderDailyForecast(daily) {
 
 function renderHourlyForecast(hourly, currentTime) {
   const el = document.getElementById('weather-hourly');
-  if (!el || !hourly) return;
+  if (!el) return;
+  if (!hourly) {
+    el.innerHTML = '';
+    return;
+  }
   el.innerHTML = '';
   const TARGET_HOURS = [15, 18, 21, 0, 3, 6, 9, 12];
   const slots = TARGET_HOURS.map(h => hourly.time.findIndex(t => {
@@ -2328,8 +2402,14 @@ function updateSaveWeatherBtn() {
 }
 
 function saveWeatherConfig() {
-  State.cfg.city = document.getElementById('cfg-city').value.trim();
-  State.cfg.apiKey = document.getElementById('cfg-api-key').value.trim();
+  const newCity = document.getElementById('cfg-city').value.trim();
+  const newKey = document.getElementById('cfg-api-key').value.trim();
+  if (newCity !== State.cfg.city) {
+    State.cfg.lat = null;
+    State.cfg.lon = null;
+  }
+  State.cfg.city = newCity;
+  State.cfg.apiKey = newKey;
   saveConfig();
   startWeatherTimer();
   showToast('Clima atualizado!');
@@ -2540,30 +2620,58 @@ async function searchCities(query) {
 
   try {
     const { apiKey } = State.cfg;
-    let url;
-    if (apiKey) {
-      url = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(query)}&limit=8&appid=${apiKey}`;
-    } else {
-      // sem API key: usa nominatim (OpenStreetMap) como fallback
-      url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=8&featuretype=city&addressdetails=1`;
+    let cities = [];
+
+    try {
+      const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=8&language=pt&format=json`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        cities = (data.results || []).map((r) => ({
+          name: r.name,
+          state: r.admin1 || '',
+          country: r.country || '',
+          query: r.admin1 ? `${r.name}, ${r.admin1}` : r.name,
+          lat: r.latitude,
+          lon: r.longitude,
+        }));
+      }
+    } catch (e) {
+      console.warn('city search open-meteo:', e);
     }
 
-    const res = await fetch(url, apiKey ? {} : { headers: { 'Accept-Language': 'pt-BR,pt;q=0.9' } });
-    if (!res.ok) throw new Error(res.status);
-    const data = await res.json();
-
-    results.innerHTML = '';
-
-    const cities = apiKey
-      ? data.map(c => ({ name: c.name, state: c.state, country: c.country, query: `${c.name},${c.country}`, lat: c.lat, lon: c.lon }))
-      : data.map(c => ({
-          name: c.address?.city || c.address?.town || c.address?.village || c.name,
-          state: c.address?.state || '',
-          country: c.address?.country || '',
-          query: c.address?.city || c.address?.town || c.address?.village || c.name,
+    if (!cities.length && apiKey) {
+      const url = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(query)}&limit=8&appid=${apiKey}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        cities = data.map((c) => ({
+          name: c.name,
+          state: c.state,
+          country: c.country,
+          query: `${c.name},${c.country}`,
           lat: c.lat,
           lon: c.lon,
         }));
+      }
+    }
+
+    if (!cities.length) {
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=8&featuretype=city&addressdetails=1`;
+      const res = await fetch(url, { headers: { 'Accept-Language': 'pt-BR,pt;q=0.9' } });
+      if (!res.ok) throw new Error(res.status);
+      const data = await res.json();
+      cities = data.map((c) => ({
+        name: c.address?.city || c.address?.town || c.address?.village || c.name,
+        state: c.address?.state || '',
+        country: c.address?.country || '',
+        query: c.address?.city || c.address?.town || c.address?.village || c.name,
+        lat: parseFloat(c.lat),
+        lon: parseFloat(c.lon),
+      }));
+    }
+
+    results.innerHTML = '';
 
     if (cities.length === 0) {
       results.innerHTML = '<div class="city-search-status">Nenhuma cidade encontrada</div>';
