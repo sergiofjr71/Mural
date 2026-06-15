@@ -2251,7 +2251,7 @@ async function updateClockPhotoMeta(photoIndex) {
 function updateClockGlassElement(el, text) {
   if (!el) return;
   el.dataset.text = text;
-  const layers = el.querySelectorAll('.clock-glass-shadow, .clock-glass-blur, .clock-glass-highlight, .clock-glass-face');
+  const layers = el.querySelectorAll('.clock-glass-shadow, .clock-glass-face');
   if (layers.length) {
     layers.forEach((node) => {
       node.textContent = text;
@@ -2259,6 +2259,91 @@ function updateClockGlassElement(el, text) {
     return;
   }
   el.textContent = text;
+}
+
+let clockToneCanvas = null;
+let clockToneCtx = null;
+let lastClockTone = '';
+
+function ensureClockToneCanvas() {
+  if (!clockToneCanvas) {
+    clockToneCanvas = document.createElement('canvas');
+    clockToneCtx = clockToneCanvas.getContext('2d', { willReadFrequently: true });
+  }
+  return clockToneCtx;
+}
+
+function setClockTone(tone) {
+  const next = tone === 'light' || tone === 'dark' ? tone : 'neutral';
+  if (lastClockTone === next) return;
+  lastClockTone = next;
+  if (next === 'neutral') {
+    document.documentElement.removeAttribute('data-clock-tone');
+    return;
+  }
+  document.documentElement.dataset.clockTone = next;
+}
+
+function sampleClockRegionLuminance(image, region) {
+  const ctx = ensureClockToneCanvas();
+  if (!ctx || !image?.naturalWidth || !image?.naturalHeight) return null;
+
+  const sampleW = 48;
+  const sampleH = 32;
+  clockToneCanvas.width = sampleW;
+  clockToneCanvas.height = sampleH;
+
+  const sx = Math.max(0, Math.round(region.x * image.naturalWidth));
+  const sy = Math.max(0, Math.round(region.y * image.naturalHeight));
+  const sw = Math.max(1, Math.round(region.w * image.naturalWidth));
+  const sh = Math.max(1, Math.round(region.h * image.naturalHeight));
+
+  ctx.drawImage(image, sx, sy, sw, sh, 0, 0, sampleW, sampleH);
+  const { data } = ctx.getImageData(0, 0, sampleW, sampleH);
+
+  let total = 0;
+  const pixels = data.length / 4;
+  for (let i = 0; i < data.length; i += 4) {
+    total += (0.2126 * data[i]) + (0.7152 * data[i + 1]) + (0.0722 * data[i + 2]);
+  }
+  return total / pixels;
+}
+
+function updateClockToneFromImage(img) {
+  if (!img?.complete || !img.naturalWidth) {
+    setClockTone('neutral');
+    return;
+  }
+
+  const clockEl = document.getElementById('clock-time');
+  const mode = document.getElementById('mode-clock');
+  if (!clockEl || !mode) {
+    setClockTone('neutral');
+    return;
+  }
+
+  const modeRect = mode.getBoundingClientRect();
+  const clockRect = clockEl.getBoundingClientRect();
+  if (!modeRect.width || !modeRect.height || !clockRect.width) {
+    setClockTone('neutral');
+    return;
+  }
+
+  const luminance = sampleClockRegionLuminance(img, {
+    x: (clockRect.left - modeRect.left) / modeRect.width,
+    y: (clockRect.top - modeRect.top) / modeRect.height,
+    w: clockRect.width / modeRect.width,
+    h: clockRect.height / modeRect.height,
+  });
+
+  if (luminance == null) {
+    setClockTone('neutral');
+    return;
+  }
+
+  if (luminance >= 168) setClockTone('light');
+  else if (luminance <= 92) setClockTone('dark');
+  else setClockTone('neutral');
 }
 
 function tickClock() {
@@ -2689,6 +2774,7 @@ async function updateClockPhoto(skipAttempts = 0) {
     img.style.opacity = '0';
     if (empty) empty.style.display = 'flex';
     hideClockPhotoMeta();
+    setClockTone('neutral');
     await updateClockPhotoNav();
     return;
   }
@@ -2699,6 +2785,7 @@ async function updateClockPhoto(skipAttempts = 0) {
     img.style.opacity = '0';
     if (empty) empty.style.display = 'flex';
     hideClockPhotoMeta();
+    setClockTone('neutral');
     await updateClockPhotoNav();
     return;
   }
@@ -2722,6 +2809,7 @@ async function updateClockPhoto(skipAttempts = 0) {
     img.src = src;
     img.style.opacity = '1';
     if (empty) empty.style.display = 'none';
+    updateClockToneFromImage(img);
     void updateClockPhotoMeta(currentIndex);
   };
   loader.onerror = () => {
@@ -2730,6 +2818,7 @@ async function updateClockPhoto(skipAttempts = 0) {
     img.removeAttribute('src');
     img.style.opacity = '0';
     hideClockPhotoMeta();
+    setClockTone('neutral');
     clockPhotoIndex = (clockPhotoIndex + 1) % count;
     void updateClockPhoto(skipAttempts + 1);
   };

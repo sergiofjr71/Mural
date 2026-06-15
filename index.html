@@ -44,48 +44,50 @@
     }
     .mode { display: none; flex: 1; min-height: 0; }
     #mode-clock.active {
-      display: flex;
-      flex-direction: row;
+      display: block;
       flex: 1;
       min-height: 0;
       width: 100%;
       max-width: 100%;
       overflow: hidden;
+      position: relative;
     }
     .clock-wrapper {
-      padding: 0 28px 5px;
+      position: relative;
+      z-index: 2;
+      padding: clamp(28px, 4vw, 48px) clamp(24px, 4vw, 48px) 24px;
       min-width: 0;
       align-self: start;
       height: fit-content;
       width: fit-content;
-      align-items: center;
+      align-items: flex-start;
     }
     #clock-photo-col {
-      display: flex;
-      min-width: 0;
-      min-height: 0;
-      height: 100%;
-      padding: 0;
+      position: absolute;
+      inset: 0;
+      z-index: 0;
     }
     #clock-photo-frame {
-      flex: 1;
-      min-height: 160px;
-      position: relative;
+      position: absolute;
+      inset: 0;
       background: #030b18;
+    }
+    #clock-photo-img {
+      object-fit: cover;
     }
     #clock-time.clock-glass,
     #clock-seconds.clock-glass {
       position: relative;
       display: inline-block;
-      font-family: 'Nunito', ui-rounded, 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, sans-serif;
-      line-height: 1;
-      font-weight: 700;
+      font-family: 'SF Pro Display', 'Helvetica Neue', 'Avenir Next', -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 0.92;
+      font-weight: 100;
     }
-    #clock-time.clock-glass { font-size: clamp(56px, calc(12vw - 4px), 110px); }
+    #clock-time.clock-glass { font-size: clamp(76px, 14vw, 140px); }
     #clock-seconds.clock-glass {
-      font-size: clamp(20px, 4.2vw, 32px);
-      font-weight: 600;
-      margin-top: 4px;
+      font-size: clamp(18px, 3vw, 28px);
+      margin-top: 6px;
+      opacity: 0.72;
     }
     #clock-date {
       font-size: clamp(9px, 4vw, 23px);
@@ -97,9 +99,7 @@
     }
   </style>
   <title>SmartDisplay</title>
-  <link rel="preload" href="fonts/Nunito-Bold.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="preload" href="fonts/Nunito-SemiBold.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="stylesheet" href="css/style.css?v=116">
+  <link rel="stylesheet" href="css/style.css?v=117">
   <script>
     (function () {
       var root = document.documentElement;
@@ -121,6 +121,29 @@
 
     <!-- MODO: RELÓGIO (padrão) -->
     <div id="mode-clock" class="mode active">
+      <div id="clock-photo-col">
+        <div id="clock-photo-frame">
+          <img id="clock-photo-img" alt="">
+          <div id="clock-photo-empty">Configurar Fotos</div>
+          <div id="clock-photo-meta" class="clock-photo-meta hidden" aria-live="polite">
+            <div id="clock-photo-meta-location" class="clock-photo-meta-line clock-photo-meta-location">
+              <span class="clock-photo-meta-kicker">Local</span><span id="clock-photo-meta-location-value"></span>
+            </div>
+            <div id="clock-photo-meta-date" class="clock-photo-meta-line"></div>
+            <div id="clock-photo-meta-time" class="clock-photo-meta-line"></div>
+          </div>
+          <button type="button" id="clock-photo-prev" class="clock-photo-nav" aria-label="Foto anterior" disabled>
+            <svg class="clock-photo-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M16 5 9 12 16 19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <button type="button" id="clock-photo-next" class="clock-photo-nav" aria-label="Próxima foto" disabled>
+            <svg class="clock-photo-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 5 15 12 8 19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        </div>
+      </div>
       <div class="clock-wrapper">
         <button type="button" id="clock-city-prev" class="clock-photo-nav clock-city-nav" aria-label="Cidade anterior" disabled>
           <svg class="clock-photo-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -135,14 +158,10 @@
         <div id="clock-left-col">
         <div id="clock-time" class="clock-glass clock-glass--time" data-text="00:00">
           <span class="clock-glass-shadow" aria-hidden="true">00:00</span>
-          <span class="clock-glass-blur" aria-hidden="true">00:00</span>
-          <span class="clock-glass-highlight" aria-hidden="true">00:00</span>
           <span class="clock-glass-face">00:00</span>
         </div>
         <div id="clock-seconds" class="clock-glass clock-glass--seconds" data-text="00">
           <span class="clock-glass-shadow" aria-hidden="true">00</span>
-          <span class="clock-glass-blur" aria-hidden="true">00</span>
-          <span class="clock-glass-highlight" aria-hidden="true">00</span>
           <span class="clock-glass-face">00</span>
         </div>
         <div id="clock-date">segunda-feira, 1 de janeiro</div>
@@ -168,29 +187,6 @@
           <div id="weather-hourly"></div>
         </div>
         </div><!-- /clock-left-col -->
-      </div>
-      <div id="clock-photo-col">
-        <div id="clock-photo-frame">
-          <img id="clock-photo-img" alt="">
-          <div id="clock-photo-empty">Configurar Fotos</div>
-          <div id="clock-photo-meta" class="clock-photo-meta hidden" aria-live="polite">
-            <div id="clock-photo-meta-location" class="clock-photo-meta-line clock-photo-meta-location">
-              <span class="clock-photo-meta-kicker">Local</span><span id="clock-photo-meta-location-value"></span>
-            </div>
-            <div id="clock-photo-meta-date" class="clock-photo-meta-line"></div>
-            <div id="clock-photo-meta-time" class="clock-photo-meta-line"></div>
-          </div>
-          <button type="button" id="clock-photo-prev" class="clock-photo-nav" aria-label="Foto anterior" disabled>
-            <svg class="clock-photo-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M16 5 9 12 16 19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </button>
-          <button type="button" id="clock-photo-next" class="clock-photo-nav" aria-label="Próxima foto" disabled>
-            <svg class="clock-photo-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M8 5 15 12 8 19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </button>
-        </div>
       </div>
     </div>
 
@@ -399,6 +395,6 @@
   <script src="js/services/photo-shuffle-service.js?v=115"></script>
   <script src="js/services/slideshow-service.js?v=115"></script>
   <script src="js/services/photo-library-service.js?v=115"></script>
-  <script src="js/app.js?v=116" defer></script>
+  <script src="js/app.js?v=117" defer></script>
 </body>
 </html>
