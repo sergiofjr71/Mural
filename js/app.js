@@ -2053,6 +2053,7 @@ function formatPhotoTime(date) {
 }
 
 let clockPhotoMetaRequest = 0;
+const PHOTO_META_UNKNOWN = 'Não Identificado';
 
 async function getPhotoFileAtIndex(index) {
   if (usesFolderSource()) {
@@ -2118,7 +2119,38 @@ async function extractPhotoMetadata(file) {
 }
 
 function hideClockPhotoMeta() {
-  document.getElementById('clock-photo-meta')?.classList.add('hidden');
+  const overlay = document.getElementById('clock-photo-meta');
+  overlay?.classList.add('hidden');
+  if (overlay) {
+    overlay.style.left = '';
+    overlay.style.maxWidth = '';
+  }
+}
+
+function syncClockPhotoMetaLayout() {
+  const overlay = document.getElementById('clock-photo-meta');
+  const leftCol = document.getElementById('clock-left-col');
+  if (!overlay || !leftCol || overlay.classList.contains('hidden')) return;
+
+  const colRect = leftCol.getBoundingClientRect();
+  overlay.style.maxWidth = `${Math.min(380, Math.max(120, colRect.width - 16))}px`;
+
+  const overlayWidth = overlay.offsetWidth;
+  const left = colRect.left + (colRect.width / 2) - (overlayWidth / 2);
+  overlay.style.left = `${left}px`;
+}
+
+let clockPhotoMetaLayoutBound = false;
+
+function bindClockPhotoMetaLayoutSync() {
+  if (clockPhotoMetaLayoutBound) return;
+  clockPhotoMetaLayoutBound = true;
+
+  window.addEventListener('resize', syncClockPhotoMetaLayout);
+  const leftCol = document.getElementById('clock-left-col');
+  if (leftCol && typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => syncClockPhotoMetaLayout()).observe(leftCol);
+  }
 }
 
 async function updateClockPhotoMeta(photoIndex) {
@@ -2137,28 +2169,23 @@ async function updateClockPhotoMeta(photoIndex) {
   const dateLine = document.getElementById('clock-photo-meta-date');
   const timeLine = document.getElementById('clock-photo-meta-time');
 
-  const hasLocation = Boolean(meta?.location);
-  const hasDate = Boolean(meta?.date);
-  const hasTime = Boolean(meta?.time);
-
-  if (!hasLocation && !hasDate && !hasTime) {
-    hideClockPhotoMeta();
-    return;
-  }
-
   overlay.classList.remove('hidden');
   if (locLine) {
-    locLine.hidden = !hasLocation;
-    if (locValue) locValue.textContent = meta.location || '';
+    locLine.hidden = false;
+    if (locValue) locValue.textContent = meta?.location || PHOTO_META_UNKNOWN;
   }
   if (dateLine) {
-    dateLine.textContent = meta.date || '';
-    dateLine.hidden = !hasDate;
+    dateLine.textContent = meta?.date || PHOTO_META_UNKNOWN;
+    dateLine.hidden = false;
   }
   if (timeLine) {
-    timeLine.textContent = meta.time || '';
-    timeLine.hidden = !hasTime;
+    timeLine.textContent = meta?.time || PHOTO_META_UNKNOWN;
+    timeLine.hidden = false;
   }
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(syncClockPhotoMetaLayout);
+  });
 }
 
 function tickClock() {
@@ -2956,8 +2983,97 @@ async function releaseWakeLock() {
 }
 
 // ─── TELA CHEIA ──────────────────────────────
-function isFullscreen() {
+const PSEUDO_FULLSCREEN_CLASS = 'pseudo-fullscreen';
+const PSEUDO_FULLSCREEN_KEY = 'sd_pseudo_fs';
+
+function isStandaloneDisplay() {
+  return window.navigator.standalone === true
+    || window.matchMedia('(display-mode: standalone)').matches
+    || window.matchMedia('(display-mode: fullscreen)').matches;
+}
+
+function nativeFullscreenActive() {
   return !!(document.fullscreenElement || document.webkitFullscreenElement);
+}
+
+function isPseudoFullscreen() {
+  return document.body.classList.contains(PSEUDO_FULLSCREEN_CLASS);
+}
+
+function isFullscreen() {
+  return nativeFullscreenActive() || isPseudoFullscreen();
+}
+
+function supportsNativeFullscreen() {
+  const candidates = [document.documentElement, document.getElementById('app'), document.body];
+  return candidates.some((el) => el && (el.requestFullscreen || el.webkitRequestFullscreen));
+}
+
+function enterPseudoFullscreen() {
+  document.body.classList.add(PSEUDO_FULLSCREEN_CLASS);
+  try { sessionStorage.setItem(PSEUDO_FULLSCREEN_KEY, '1'); } catch {}
+  if (isAppleMobileDevice() && !isStandaloneDisplay()) {
+    window.scrollTo(0, 1);
+    setTimeout(() => window.scrollTo(0, 0), 100);
+  }
+}
+
+function exitPseudoFullscreen() {
+  document.body.classList.remove(PSEUDO_FULLSCREEN_CLASS);
+  try { sessionStorage.removeItem(PSEUDO_FULLSCREEN_KEY); } catch {}
+}
+
+function restorePseudoFullscreen() {
+  try {
+    if (sessionStorage.getItem(PSEUDO_FULLSCREEN_KEY) === '1') {
+      document.body.classList.add(PSEUDO_FULLSCREEN_CLASS);
+    }
+  } catch {}
+}
+
+async function enterNativeFullscreen() {
+  const candidates = [document.documentElement, document.getElementById('app'), document.body]
+    .filter(Boolean);
+
+  for (const el of candidates) {
+    if (typeof el.requestFullscreen === 'function') {
+      try {
+        await el.requestFullscreen();
+        if (nativeFullscreenActive()) return true;
+      } catch (e) {
+        console.warn('requestFullscreen:', e);
+      }
+    }
+
+    if (typeof el.webkitRequestFullscreen === 'function') {
+      try {
+        const keyboardFlag = (typeof Element !== 'undefined' && Element.ALLOW_KEYBOARD_INPUT) || 1;
+        const result = el.webkitRequestFullscreen(keyboardFlag);
+        if (result && typeof result.then === 'function') await result;
+        if (nativeFullscreenActive()) return true;
+      } catch (e) {
+        console.warn('webkitRequestFullscreen:', e);
+      }
+    }
+  }
+
+  return nativeFullscreenActive();
+}
+
+async function exitNativeFullscreen() {
+  if (!nativeFullscreenActive()) return;
+
+  try {
+    if (typeof document.exitFullscreen === 'function') {
+      await document.exitFullscreen();
+      return;
+    }
+    if (typeof document.webkitExitFullscreen === 'function') {
+      await document.webkitExitFullscreen();
+    }
+  } catch (e) {
+    console.warn('exitFullscreen:', e);
+  }
 }
 
 function updateFullscreenFab() {
@@ -2971,25 +3087,28 @@ function updateFullscreenFab() {
   btn.setAttribute('title', label);
 }
 
-function toggleFullscreen() {
-  if (!isFullscreen()) {
-    const el = document.documentElement;
-    const request = el.requestFullscreen
-      || el.webkitRequestFullscreen
-      || el.msRequestFullscreen;
-    if (request) {
-      const result = request.call(el);
-      if (result?.catch) result.catch((e) => console.warn('requestFullscreen:', e));
-    }
-  } else {
-    const exit = document.exitFullscreen
-      || document.webkitExitFullscreen
-      || document.msExitFullscreen;
-    if (exit) {
-      const result = exit.call(document);
-      if (result?.catch) result.catch((e) => console.warn('exitFullscreen:', e));
+async function toggleFullscreen() {
+  if (isFullscreen()) {
+    exitPseudoFullscreen();
+    await exitNativeFullscreen();
+    updateFullscreenFab();
+    return;
+  }
+
+  let nativeEntered = false;
+  if (supportsNativeFullscreen()) {
+    try {
+      nativeEntered = await enterNativeFullscreen();
+    } catch (e) {
+      console.warn('toggleFullscreen native:', e);
     }
   }
+
+  if (!nativeEntered) {
+    enterPseudoFullscreen();
+  }
+
+  updateFullscreenFab();
 }
 
 // ─── TOAST ───────────────────────────────────
@@ -3462,6 +3581,9 @@ async function init() {
   lastMidnightCheckDate = getTodayKey();
 
   bindEvents();
+  bindClockPhotoMetaLayoutSync();
+  restorePseudoFullscreen();
+  updateFullscreenFab();
   initSettingsSections();
   setupFolderPickerUi();
   updateCityNav();

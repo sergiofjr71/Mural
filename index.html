@@ -21,8 +21,9 @@
       document.head.appendChild(base);
     })();
   </script>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="SmartDisplay">
   <meta name="theme-color" content="#030b18">
@@ -52,7 +53,7 @@
       overflow: hidden;
     }
     .clock-wrapper {
-      padding: 24px 28px 5px;
+      padding: 0 28px 5px;
       min-width: 0;
       align-self: start;
       height: fit-content;
@@ -73,7 +74,7 @@
       background: #030b18;
     }
     #clock-time {
-      font-size: clamp(56px, 12vw, 120px);
+      font-size: clamp(46px, calc(12vw - 10px), 110px);
       font-weight: 100;
       letter-spacing: -2px;
       line-height: 1;
@@ -140,11 +141,13 @@
                 <span id="weather-icon-big">⛅</span>
                 <span id="weather-temp-big">--°</span>
               </div>
-              <span id="weather-desc-main">carregando...</span>
             </div>
             <div id="weather-current-right">
               <div class="weather-meta-row"><span class="weather-meta-label">Sensação</span><span id="weather-feels">--°</span></div>
               <div class="weather-meta-row"><span class="weather-meta-label">Umidade</span><span id="weather-humidity">--%</span></div>
+              <div class="weather-meta-row weather-meta-row--desc">
+                <span id="weather-desc-main">carregando...</span>
+              </div>
             </div>
           </div>
           <div id="weather-daily"></div>
@@ -157,7 +160,7 @@
           <img id="clock-photo-img" alt="">
           <div id="clock-photo-empty">Configurar Fotos</div>
           <div id="clock-photo-meta" class="clock-photo-meta hidden" aria-live="polite">
-            <div id="clock-photo-meta-location" class="clock-photo-meta-line clock-photo-meta-location" hidden>
+            <div id="clock-photo-meta-location" class="clock-photo-meta-line clock-photo-meta-location">
               <span class="clock-photo-meta-kicker">Local</span><span id="clock-photo-meta-location-value"></span>
             </div>
             <div id="clock-photo-meta-date" class="clock-photo-meta-line"></div>
