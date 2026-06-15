@@ -383,64 +383,129 @@ body.clock-nav-visible .clock-photo-nav:not(:disabled) .clock-photo-nav-icon,
 #clock-time {
   position: relative;
   display: inline-block;
-  font-family: var(--clock-font);
-  font-size: clamp(52px, calc(12vw - 6px), 130px);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1;
-  font-variant-numeric: lining-nums tabular-nums;
-  isolation: isolate;
-  color: rgba(255, 255, 255, 0.52);
-  -webkit-text-stroke: 2px rgba(255, 255, 255, 0.95);
-  paint-order: stroke fill;
-  text-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.78),
-    0 2px 0 rgba(255, 255, 255, 0.28),
-    0 6px 18px rgba(0, 0, 0, 0.5);
-}
-
-#clock-time::before {
-  content: attr(data-text);
-  position: absolute;
-  left: 0;
-  top: 0;
-  color: rgba(255, 255, 255, 0.38);
-  -webkit-text-stroke: 0 transparent;
-  filter: blur(8px);
-  opacity: 0.9;
-  z-index: -1;
-  pointer-events: none;
 }
 
 #clock-seconds {
   position: relative;
   display: inline-block;
-  font-family: var(--clock-font);
-  font-size: clamp(20px, 4.2vw, 38px);
-  font-weight: 600;
-  letter-spacing: 0.08em;
   margin-top: 4px;
-  font-variant-numeric: tabular-nums;
-  isolation: isolate;
-  color: rgba(255, 255, 255, 0.42);
-  -webkit-text-stroke: 1.2px rgba(255, 255, 255, 0.72);
-  paint-order: stroke fill;
-  text-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.55),
-    0 4px 10px rgba(0, 0, 0, 0.38);
 }
 
-#clock-seconds::before {
-  content: attr(data-text);
+/* ── RELÓGIO GLASS ── */
+.clock-glass {
+  position: relative;
+  display: inline-block;
+  font-family: var(--clock-font);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: lining-nums tabular-nums;
+  isolation: isolate;
+}
+
+.clock-glass--time {
+  font-size: clamp(56px, calc(12vw - 4px), 132px);
+}
+
+.clock-glass--seconds {
+  font-size: clamp(20px, 4.2vw, 38px);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.clock-glass-shadow,
+.clock-glass-blur,
+.clock-glass-highlight,
+.clock-glass-face {
+  font: inherit;
+  letter-spacing: inherit;
+  font-variant-numeric: inherit;
+  white-space: nowrap;
+}
+
+.clock-glass-shadow,
+.clock-glass-blur,
+.clock-glass-highlight {
   position: absolute;
   left: 0;
   top: 0;
-  color: rgba(255, 255, 255, 0.28);
-  -webkit-text-stroke: 0 transparent;
-  filter: blur(5px);
-  opacity: 0.85;
-  z-index: -1;
   pointer-events: none;
+  user-select: none;
+}
+
+.clock-glass-shadow {
+  z-index: 0;
+  color: transparent;
+  text-shadow:
+    0 2px 3px rgba(0, 0, 0, 0.42),
+    0 10px 26px rgba(0, 0, 0, 0.36),
+    0 18px 40px rgba(0, 0, 0, 0.18);
+  transform: translateY(2px);
+  opacity: 0.75;
+}
+
+.clock-glass-blur {
+  z-index: 1;
+  color: rgba(255, 255, 255, 0.22);
+  -webkit-text-stroke: 0 transparent;
+  filter: blur(10px) saturate(1.15);
+  transform: scale(1.015);
+  opacity: 0.95;
+}
+
+.clock-glass-highlight {
+  z-index: 2;
+  color: transparent;
+  -webkit-text-stroke: 0 transparent;
+  text-shadow:
+    -1px -1px 0 rgba(255, 255, 255, 0.72),
+    -2px -2px 6px rgba(255, 255, 255, 0.22);
+  opacity: 0.85;
+}
+
+.clock-glass-face {
+  position: relative;
+  z-index: 3;
+  display: block;
+  color: rgba(255, 255, 255, 0.34);
+  -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.94);
+  paint-order: stroke fill;
+  background: linear-gradient(
+    152deg,
+    rgba(255, 255, 255, 0.88) 0%,
+    rgba(220, 235, 255, 0.28) 34%,
+    rgba(255, 255, 255, 0.12) 54%,
+    rgba(255, 255, 255, 0.58) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.42),
+    0 0 18px rgba(255, 255, 255, 0.14);
+}
+
+@supports not ((-webkit-background-clip: text) or (background-clip: text)) {
+  .clock-glass-face {
+    background: none;
+    -webkit-text-fill-color: rgba(255, 255, 255, 0.38);
+    color: rgba(255, 255, 255, 0.38);
+  }
+}
+
+.clock-glass--seconds .clock-glass-shadow {
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 6px 14px rgba(0, 0, 0, 0.28);
+  transform: translateY(1px);
+}
+
+.clock-glass--seconds .clock-glass-blur {
+  filter: blur(6px) saturate(1.1);
+}
+
+.clock-glass--seconds .clock-glass-face {
+  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.82);
 }
 
 #clock-date {
@@ -680,27 +745,36 @@ body.clock-nav-visible .clock-photo-nav:not(:disabled) .clock-photo-nav-icon,
   font-variant-numeric: tabular-nums;
 }
 
-body.night-mode #clock-time {
-  color: rgba(140, 185, 230, 0.45);
-  -webkit-text-stroke-color: rgba(120, 170, 220, 0.75);
+body.night-mode .clock-glass-shadow {
+  opacity: 0.55;
   text-shadow:
-    0 1px 0 rgba(140, 185, 230, 0.45),
-    0 6px 18px rgba(0, 0, 0, 0.55);
-  opacity: 0.8;
+    0 2px 3px rgba(0, 0, 0, 0.5),
+    0 10px 24px rgba(0, 0, 0, 0.42);
 }
 
-body.night-mode #clock-time::before {
-  color: rgba(100, 150, 200, 0.3);
+body.night-mode .clock-glass-blur {
+  color: rgba(140, 185, 230, 0.18);
 }
 
-body.night-mode #clock-seconds {
-  color: rgba(120, 170, 220, 0.38);
-  -webkit-text-stroke-color: rgba(100, 150, 200, 0.55);
-  opacity: 0.75;
+body.night-mode .clock-glass-highlight {
+  text-shadow:
+    -1px -1px 0 rgba(140, 185, 230, 0.45),
+    -2px -2px 5px rgba(140, 185, 230, 0.15);
+  opacity: 0.65;
 }
 
-body.night-mode #clock-seconds::before {
-  color: rgba(90, 140, 190, 0.25);
+body.night-mode .clock-glass-face {
+  -webkit-text-stroke-color: rgba(130, 175, 220, 0.72);
+  background: linear-gradient(
+    152deg,
+    rgba(170, 210, 245, 0.62) 0%,
+    rgba(100, 150, 200, 0.2) 40%,
+    rgba(120, 170, 220, 0.12) 58%,
+    rgba(150, 195, 235, 0.38) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  opacity: 0.82;
 }
 body.night-mode #weather-temp-big { color: #2a4a6a; opacity: 0.6; }
 

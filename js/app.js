@@ -2248,6 +2248,19 @@ async function updateClockPhotoMeta(photoIndex) {
   });
 }
 
+function updateClockGlassElement(el, text) {
+  if (!el) return;
+  el.dataset.text = text;
+  const layers = el.querySelectorAll('.clock-glass-shadow, .clock-glass-blur, .clock-glass-highlight, .clock-glass-face');
+  if (layers.length) {
+    layers.forEach((node) => {
+      node.textContent = text;
+    });
+    return;
+  }
+  el.textContent = text;
+}
+
 function tickClock() {
   const now = new Date();
   const timeStr = formatTime(now);
@@ -2255,16 +2268,8 @@ function tickClock() {
   const secStr = pad(now.getSeconds());
 
   // modo relógio
-  const el = document.getElementById('clock-time');
-  if (el) {
-    el.textContent = timeStr;
-    el.dataset.text = timeStr;
-  }
-  const elSec = document.getElementById('clock-seconds');
-  if (elSec) {
-    elSec.textContent = secStr;
-    elSec.dataset.text = secStr;
-  }
+  updateClockGlassElement(document.getElementById('clock-time'), timeStr);
+  updateClockGlassElement(document.getElementById('clock-seconds'), secStr);
   const elDate = document.getElementById('clock-date');
   if (elDate) elDate.textContent = dateStr;
 

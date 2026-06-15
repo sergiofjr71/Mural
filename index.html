@@ -73,28 +73,19 @@
       position: relative;
       background: #030b18;
     }
-    #clock-time {
+    #clock-time.clock-glass,
+    #clock-seconds.clock-glass {
       position: relative;
       display: inline-block;
       font-family: 'Nunito', ui-rounded, 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, sans-serif;
-      font-size: clamp(52px, calc(12vw - 6px), 110px);
-      font-weight: 700;
-      letter-spacing: -0.02em;
       line-height: 1;
-      color: rgba(255, 255, 255, 0.52);
-      -webkit-text-stroke: 2px rgba(255, 255, 255, 0.95);
-      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.78), 0 6px 18px rgba(0, 0, 0, 0.5);
+      font-weight: 700;
     }
-    #clock-seconds {
-      position: relative;
-      display: inline-block;
-      font-family: 'Nunito', ui-rounded, 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, sans-serif;
+    #clock-time.clock-glass { font-size: clamp(56px, calc(12vw - 4px), 110px); }
+    #clock-seconds.clock-glass {
       font-size: clamp(20px, 4.2vw, 32px);
       font-weight: 600;
       margin-top: 4px;
-      color: rgba(255, 255, 255, 0.42);
-      -webkit-text-stroke: 1.2px rgba(255, 255, 255, 0.72);
-      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55), 0 4px 10px rgba(0, 0, 0, 0.38);
     }
     #clock-date {
       font-size: clamp(9px, 4vw, 23px);
@@ -108,7 +99,7 @@
   <title>SmartDisplay</title>
   <link rel="preload" href="fonts/Nunito-Bold.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="preload" href="fonts/Nunito-SemiBold.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="stylesheet" href="css/style.css?v=115">
+  <link rel="stylesheet" href="css/style.css?v=116">
   <script>
     (function () {
       var root = document.documentElement;
@@ -142,8 +133,18 @@
           </svg>
         </button>
         <div id="clock-left-col">
-        <div id="clock-time" data-text="00:00">00:00</div>
-        <div id="clock-seconds" data-text="00">00</div>
+        <div id="clock-time" class="clock-glass clock-glass--time" data-text="00:00">
+          <span class="clock-glass-shadow" aria-hidden="true">00:00</span>
+          <span class="clock-glass-blur" aria-hidden="true">00:00</span>
+          <span class="clock-glass-highlight" aria-hidden="true">00:00</span>
+          <span class="clock-glass-face">00:00</span>
+        </div>
+        <div id="clock-seconds" class="clock-glass clock-glass--seconds" data-text="00">
+          <span class="clock-glass-shadow" aria-hidden="true">00</span>
+          <span class="clock-glass-blur" aria-hidden="true">00</span>
+          <span class="clock-glass-highlight" aria-hidden="true">00</span>
+          <span class="clock-glass-face">00</span>
+        </div>
         <div id="clock-date">segunda-feira, 1 de janeiro</div>
         <div class="clock-divider"></div>
         <div id="weather-block">
@@ -398,6 +399,6 @@
   <script src="js/services/photo-shuffle-service.js?v=115"></script>
   <script src="js/services/slideshow-service.js?v=115"></script>
   <script src="js/services/photo-library-service.js?v=115"></script>
-  <script src="js/app.js?v=115" defer></script>
+  <script src="js/app.js?v=116" defer></script>
 </body>
 </html>
