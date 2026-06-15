@@ -910,18 +910,25 @@ body.night-mode #weather-temp-big { color: #2a4a6a; opacity: 0.6; }
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: visible;
+  box-sizing: border-box;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
   transition: color 0.2s, background 0.2s, transform 0.15s, opacity 0.5s;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
 
+html.platform-ios .settings-fab,
+html.platform-ios .fullscreen-fab {
+  bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom, 20px));
+}
+
 .settings-fab {
-  right: 16px;
+  right: calc(16px + env(safe-area-inset-right, 0px));
 }
 
 .fullscreen-fab {
-  right: calc(16px + 50px + 10px);
+  right: calc(16px + env(safe-area-inset-right, 0px) + 50px + 10px);
 }
 
 .settings-fab:hover,
@@ -939,13 +946,16 @@ body.night-mode #weather-temp-big { color: #2a4a6a; opacity: 0.6; }
 }
 
 .settings-fab-icon {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
+  display: block;
+  flex-shrink: 0;
+  overflow: visible;
 }
 
 body.night-mode .settings-fab,
 body.night-mode .fullscreen-fab {
-  opacity: 0.35;
+  opacity: 0.8;
 }
 
 body.pseudo-fullscreen {
@@ -1053,7 +1063,7 @@ body.pseudo-fullscreen .fullscreen-fab {
 }
 
 .settings-section-chevron {
-  font-size: 14px;
+  font-size: 22px;
   line-height: 1;
   color: var(--text-dim);
   transition: transform 0.2s ease;

@@ -3009,6 +3009,11 @@ function supportsNativeFullscreen() {
   return candidates.some((el) => el && (el.requestFullscreen || el.webkitRequestFullscreen));
 }
 
+function shouldUseNativeFullscreen() {
+  // iPadOS Safari shows a mandatory system "X" exit control in native fullscreen.
+  return !isAppleMobileDevice();
+}
+
 function enterPseudoFullscreen() {
   document.body.classList.add(PSEUDO_FULLSCREEN_CLASS);
   try { sessionStorage.setItem(PSEUDO_FULLSCREEN_KEY, '1'); } catch {}
@@ -3096,7 +3101,7 @@ async function toggleFullscreen() {
   }
 
   let nativeEntered = false;
-  if (supportsNativeFullscreen()) {
+  if (shouldUseNativeFullscreen() && supportsNativeFullscreen()) {
     try {
       nativeEntered = await enterNativeFullscreen();
     } catch (e) {
@@ -3583,6 +3588,9 @@ async function init() {
   bindEvents();
   bindClockPhotoMetaLayoutSync();
   restorePseudoFullscreen();
+  if (isAppleMobileDevice() && nativeFullscreenActive()) {
+    void exitNativeFullscreen();
+  }
   updateFullscreenFab();
   initSettingsSections();
   setupFolderPickerUi();
