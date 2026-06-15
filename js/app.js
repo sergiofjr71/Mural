@@ -28,7 +28,7 @@ const State = {
     transition: 'fade',
     format24h: true,
     nightAuto: true,
-    nightStart: '22:00',
+    nightStart: '19:00',
     nightEnd: '07:00',
     wakelock: true,
   }
@@ -57,7 +57,8 @@ function loadConfig() {
 // ─── FOTOS (pasta vinculada ou URLs) ─────────
 const IMAGE_FILE_RE = /\.(jpe?g|png|gif|webp|bmp|avif|heic|heif)$/i;
 const PHOTO_DB_NAME = 'SmartDisplay';
-const PHOTO_DB_VERSION = 3;
+const PHOTO_DB_VERSION = 4;
+const GALLERY_FOLDERS_KEY = 'sd_gallery_folders';
 let photoDbPromise = null;
 let clockPhotoObjectUrl = null;
 let slidePhotoObjectUrls = { a: null, b: null };
@@ -77,6 +78,9 @@ function openPhotoDB() {
         const db = e.target.result;
         if (!db.objectStoreNames.contains('folder')) {
           db.createObjectStore('folder');
+        }
+        if (!db.objectStoreNames.contains('gallery')) {
+          db.createObjectStore('gallery');
         }
         if (db.objectStoreNames.contains('photos')) {
           db.deleteObjectStore('photos');
@@ -155,17 +159,37 @@ async function persistLinkedFolderHandles() {
   return folders.length;
 }
 
-async function queryFolderReadPermission(folder) {
-  if (!folder?.handle) return 'granted';
+async function queryHandleReadPermission(handle) {
+  if (!handle) return 'granted';
   try {
-    return await folder.handle.queryPermission({ mode: 'read' });
+    return await handle.queryPermission({ mode: 'read' });
   } catch (e) {
-    console.warn('queryFolderReadPermission:', e);
+    console.warn('queryHandleReadPermission:', e);
     return 'denied';
   }
 }
 
+async function queryFolderReadPermission(folder) {
+  return queryHandleReadPermission(folder?.handle);
+}
+
+async function verifyHandleAccess(handle) {
+  if (!handle) return true;
+  try {
+    const iter = handle.values();
+    await iter.next();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function verifyFolderHandleAccess(folder) {
+  return verifyHandleAccess(folder?.handle);
+}
+
 const FOLDER_PERMISSIONS_KEY = 'sd_folder_permissions';
+let folderPermissionPromptBound = false;
 
 function loadFolderPermissionsMap() {
   try {
@@ -182,6 +206,7 @@ function markFolderPermissionGranted(folderId) {
     const map = loadFolderPermissionsMap();
     map[folderId] = Date.now();
     localStorage.setItem(FOLDER_PERMISSIONS_KEY, JSON.stringify(map));
+    sessionStorage.setItem('sd_folder_perm_done', '1');
   } catch {}
 }
 
@@ -194,46 +219,43 @@ function clearFolderPermissionGranted(folderId) {
   } catch {}
 }
 
-async function verifyFolderHandleAccess(folder) {
-  if (!folder?.handle) return true;
+async function requestHandleReadPermission(handle) {
+  if (!handle) return true;
   try {
-    const iter = folder.handle.values();
-    await iter.next();
-    return true;
-  } catch {
+    const current = await queryHandleReadPermission(handle);
+    if (current === 'granted') return true;
+    if (current === 'denied') return false;
+
+    const result = await handle.requestPermission({ mode: 'read' });
+    if (result !== 'granted') return false;
+    return verifyHandleAccess(handle);
+  } catch (e) {
+    console.warn('requestHandleReadPermission:', e);
     return false;
   }
 }
 
+async function requestFolderReadPermission(folder) {
+  if (!folder?.handle) return true;
+  return requestHandleReadPermission(folder.handle);
+}
+
 async function folderHasReadAccess(folder) {
   if (!folder?.handle) return true;
-
-  if (await verifyFolderHandleAccess(folder)) {
-    markFolderPermissionGranted(folder.id);
-    return true;
-  }
 
   const state = await queryFolderReadPermission(folder);
   if (state === 'granted') {
     markFolderPermissionGranted(folder.id);
     return true;
   }
+  if (state === 'denied') return false;
+
+  if (await verifyFolderHandleAccess(folder)) {
+    markFolderPermissionGranted(folder.id);
+    return true;
+  }
 
   return false;
-}
-
-async function requestFolderReadPermission(folder) {
-  if (!folder?.handle) return true;
-  try {
-    const current = await folder.handle.queryPermission({ mode: 'read' });
-    if (current === 'granted') return true;
-    const result = await folder.handle.requestPermission({ mode: 'read' });
-    if (result !== 'granted') return false;
-    return verifyFolderHandleAccess(folder);
-  } catch (e) {
-    console.warn('requestFolderReadPermission:', e);
-    return false;
-  }
 }
 
 async function ensureFolderReadPermission(folder, { interactive = false } = {}) {
@@ -244,6 +266,34 @@ async function ensureFolderReadPermission(folder, { interactive = false } = {}) 
   const granted = await requestFolderReadPermission(folder);
   if (granted) markFolderPermissionGranted(folder.id);
   return granted;
+}
+
+async function syncPersistedFolderPermissions() {
+  for (const folder of State.linkedFolders) {
+    if (!folder.handle) continue;
+    const state = await queryFolderReadPermission(folder);
+    if (state === 'granted') markFolderPermissionGranted(folder.id);
+  }
+}
+
+function setupDeferredFolderPermissionGrant() {
+  if (folderPermissionPromptBound) return;
+  if (sessionStorage.getItem('sd_folder_perm_done') === '1') return;
+
+  folderPermissionPromptBound = true;
+  const run = async () => {
+    const needs = await getFoldersNeedingPermission();
+    if (!needs.length) {
+      document.removeEventListener('pointerdown', run, true);
+      return;
+    }
+
+    document.removeEventListener('pointerdown', run, true);
+    const ok = await grantAllFolderAccess();
+    if (ok) sessionStorage.setItem('sd_folder_perm_done', '1');
+  };
+
+  document.addEventListener('pointerdown', run, true);
 }
 
 async function getFoldersNeedingPermission() {
@@ -314,7 +364,7 @@ async function updateLinkedFoldersPermissionLabels() {
     if (!folder || !kindEl) continue;
 
     if (!folder.handle) {
-      kindEl.textContent = 'somente nesta sessão';
+      kindEl.textContent = folder.gallerySource ? 'salva neste dispositivo' : 'somente nesta sessão';
       kindEl.classList.remove('linked-folder-kind--pending');
       continue;
     }
@@ -334,7 +384,8 @@ function saveLinkedFoldersMeta() {
       State.linkedFolders.map((folder) => ({
         id: folder.id,
         name: folder.name,
-        persisted: Boolean(folder.handle),
+        persisted: Boolean(folder.handle || folder.gallerySource),
+        gallerySource: Boolean(folder.gallerySource),
       }))
     ));
   } catch {}
@@ -386,6 +437,115 @@ async function loadStoredFolderHandles() {
   }
 }
 
+function galleryFileIdentity(file) {
+  return `${file.name}::${file.size}::${file.lastModified}`;
+}
+
+async function persistGalleryFolderToIdb(folder) {
+  if (!folder?.id || !folder.files?.length) return;
+  const records = await Promise.all(folder.files.map(async (file) => ({
+    name: file.name,
+    type: file.type || '',
+    lastModified: file.lastModified || Date.now(),
+    data: await file.arrayBuffer(),
+  })));
+  const db = await openPhotoDB();
+  const tx = db.transaction('gallery', 'readwrite');
+  tx.objectStore('gallery').put({ files: records }, folder.id);
+  await idbTransactionDone(tx);
+
+  try {
+    const meta = JSON.parse(localStorage.getItem(GALLERY_FOLDERS_KEY) || '[]');
+    if (!meta.some((entry) => entry.id === folder.id)) {
+      meta.push({ id: folder.id, name: folder.name });
+      localStorage.setItem(GALLERY_FOLDERS_KEY, JSON.stringify(meta));
+    }
+  } catch {}
+}
+
+async function loadGalleryFolderFromIdb(folderId) {
+  const db = await openPhotoDB();
+  const record = await idbRequestToPromise(
+    db.transaction('gallery', 'readonly').objectStore('gallery').get(folderId)
+  );
+  if (!record?.files?.length) return [];
+  return record.files.map((item) => new File([item.data], item.name, {
+    type: item.type || 'image/jpeg',
+    lastModified: item.lastModified || Date.now(),
+  }));
+}
+
+async function deleteGalleryFolderFromIdb(folderId) {
+  try {
+    const db = await openPhotoDB();
+    const tx = db.transaction('gallery', 'readwrite');
+    tx.objectStore('gallery').delete(folderId);
+    await idbTransactionDone(tx);
+  } catch (e) {
+    console.warn('deleteGalleryFolderFromIdb:', e);
+  }
+
+  try {
+    const meta = JSON.parse(localStorage.getItem(GALLERY_FOLDERS_KEY) || '[]');
+    localStorage.setItem(
+      GALLERY_FOLDERS_KEY,
+      JSON.stringify(meta.filter((entry) => entry.id !== folderId))
+    );
+  } catch {}
+}
+
+async function loadStoredGalleryFolders() {
+  try {
+    const meta = JSON.parse(localStorage.getItem(GALLERY_FOLDERS_KEY) || '[]');
+    if (!meta.length) return false;
+
+    let loadedAny = false;
+    for (const entry of meta) {
+      if (!entry?.id || State.linkedFolders.some((folder) => folder.id === entry.id)) continue;
+      const files = await loadGalleryFolderFromIdb(entry.id);
+      if (!files.length) continue;
+      State.linkedFolders.push({
+        id: entry.id,
+        name: entry.name || 'Galeria de Fotos',
+        files,
+        gallerySource: true,
+      });
+      loadedAny = true;
+    }
+
+    if (loadedAny) saveLinkedFoldersMeta();
+    return loadedAny;
+  } catch (e) {
+    console.warn('loadStoredGalleryFolders:', e);
+    return false;
+  }
+}
+
+async function appendToGalleryFolder(folderId, newFiles) {
+  const folder = State.linkedFolders.find((item) => item.id === folderId);
+  if (!folder) return 0;
+
+  const existing = new Set((folder.files || []).map(galleryFileIdentity));
+  const merged = [...(folder.files || [])];
+  let added = 0;
+
+  for (const file of newFiles) {
+    if (!isDisplayableImageFile(file)) continue;
+    const identity = galleryFileIdentity(file);
+    if (existing.has(identity)) continue;
+    existing.add(identity);
+    merged.push(file);
+    added += 1;
+  }
+
+  folder.files = merged;
+  if (folder.gallerySource) {
+    await persistGalleryFolderToIdb(folder);
+  }
+  saveLinkedFoldersMeta();
+  return added;
+}
+
 async function clearAllLinkedFolders() {
   State.linkedFolders = [];
   clearFolderPhotoState();
@@ -393,11 +553,12 @@ async function clearAllLinkedFolders() {
     localStorage.removeItem('sd_folder_names');
     localStorage.removeItem('sd_folder_name');
     localStorage.removeItem('sd_linked_folders_meta');
+    localStorage.removeItem(GALLERY_FOLDERS_KEY);
     const db = await openPhotoDB();
-    const tx = db.transaction('folder', 'readwrite');
-    const store = tx.objectStore('folder');
-    store.delete('linked');
-    store.delete('primary');
+    const tx = db.transaction(['folder', 'gallery'], 'readwrite');
+    tx.objectStore('folder').delete('linked');
+    tx.objectStore('folder').delete('primary');
+    tx.objectStore('gallery').clear();
     await idbTransactionDone(tx);
   } catch (e) {
     console.warn('clearAllLinkedFolders:', e);
@@ -405,8 +566,12 @@ async function clearAllLinkedFolders() {
 }
 
 async function removeLinkedFolder(folderId) {
+  const removed = State.linkedFolders.find((folder) => folder.id === folderId);
   clearFolderPermissionGranted(folderId);
   clearHiddenFolderPhotosForFolder(folderId);
+  if (removed?.gallerySource) {
+    await deleteGalleryFolderFromIdb(folderId);
+  }
   State.linkedFolders = State.linkedFolders.filter((folder) => folder.id !== folderId);
   if (!State.linkedFolders.some((folder) => folder.handle)) {
     try {
@@ -453,16 +618,26 @@ async function addLinkedFolderHandle(handle, name) {
   return true;
 }
 
-async function addLinkedSessionFolder(name, files) {
+async function addLinkedSessionFolder(name, files, { gallerySource = false } = {}) {
   const uniqueName = getUniqueFolderName(name);
-  State.linkedFolders.push({
+  const folder = {
     id: generateFolderId(),
     name: uniqueName,
     files,
-  });
+  };
+  if (gallerySource) folder.gallerySource = true;
+  State.linkedFolders.push(folder);
   renderLinkedFoldersList();
   updatePhotoActionButtons();
   saveLinkedFoldersMeta();
+  if (gallerySource) {
+    try {
+      await persistGalleryFolderToIdb(folder);
+    } catch (e) {
+      console.warn('persistGalleryFolderToIdb:', e);
+      showToast('Fotos incluídas, mas não foi possível salvar neste dispositivo');
+    }
+  }
   return true;
 }
 
@@ -573,6 +748,135 @@ function revokeClockPhotoObjectUrl() {
     revokeObjectUrl(clockPhotoObjectUrl);
     clockPhotoObjectUrl = null;
   }
+}
+
+let exifrLoadPromise = null;
+const EXIFR_SCRIPT_URLS = [
+  'https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js',
+  'https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/lite.umd.js',
+];
+
+function exifrAvailable() {
+  return typeof exifr !== 'undefined' && typeof exifr.parse === 'function';
+}
+
+function loadExifrLibrary() {
+  if (exifrAvailable()) return Promise.resolve();
+  if (!exifrLoadPromise) {
+    exifrLoadPromise = (async () => {
+      for (const url of EXIFR_SCRIPT_URLS) {
+        try {
+          await loadExternalScript(url);
+          if (exifrAvailable()) return;
+        } catch (e) {
+          console.warn('loadExifrLibrary:', url, e);
+        }
+      }
+      throw new Error('exifr indisponível');
+    })();
+  }
+  return exifrLoadPromise;
+}
+
+const photoGeocodeCache = new Map();
+
+async function reverseGeocodePhoto(lat, lon) {
+  const key = `${lat.toFixed(3)},${lon.toFixed(3)}`;
+  if (photoGeocodeCache.has(key)) return photoGeocodeCache.get(key);
+
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&format=json&accept-language=pt`;
+    const res = await fetch(url, {
+      headers: {
+        'Accept-Language': 'pt-BR,pt',
+        'User-Agent': 'SmartDisplay-Mural/1.0 (photo metadata)',
+      },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const addr = data.address || {};
+    const city = addr.city || addr.town || addr.village || addr.municipality || addr.suburb;
+    const region = addr.state || addr.region;
+    const label = [city, region].filter(Boolean).join(', ')
+      || data.display_name?.split(',').slice(0, 2).map((part) => part.trim()).filter(Boolean).join(', ')
+      || null;
+    if (label) photoGeocodeCache.set(key, label);
+    return label;
+  } catch (e) {
+    console.warn('reverseGeocodePhoto:', e);
+    return null;
+  }
+}
+
+function uniqueTruthyLocationParts(values) {
+  const seen = new Set();
+  const parts = [];
+  values.forEach((value) => {
+    const text = value == null ? '' : String(value).trim();
+    if (!text || seen.has(text.toLowerCase())) return;
+    seen.add(text.toLowerCase());
+    parts.push(text);
+  });
+  return parts;
+}
+
+function normalizeLocationText(value) {
+  if (value == null) return null;
+  const text = String(value).trim();
+  if (text.length < 2 || text.length > 120) return null;
+  return text;
+}
+
+function pickExifLocationLabel(parsed) {
+  if (!parsed) return null;
+
+  const textFields = [
+    parsed.LocationName,
+    parsed.Location,
+    parsed.ImageDescription,
+    parsed.UserComment,
+    parsed.XPTitle,
+    parsed.XPSubject,
+    parsed.XPKeywords,
+    parsed?.iptc?.City,
+    parsed?.xmp?.City,
+  ];
+  for (const field of textFields) {
+    const text = normalizeLocationText(field);
+    if (text) return text;
+  }
+
+  const parts = uniqueTruthyLocationParts([
+    parsed.SubLocation || parsed['Sub-location'],
+    parsed.City || parsed?.iptc?.City || parsed?.xmp?.City,
+    parsed.ProvinceState || parsed.State || parsed?.iptc?.ProvinceState,
+    parsed.Country || parsed.CountryCode || parsed?.iptc?.Country,
+  ]);
+
+  return parts.length ? parts.join(', ') : null;
+}
+
+async function resolvePhotoLocation(file, parsed) {
+  let lat = parsed?.latitude;
+  let lon = parsed?.longitude;
+
+  if ((!Number.isFinite(lat) || !Number.isFinite(lon)) && exifrAvailable()) {
+    try {
+      const gps = await exifr.gps(file);
+      if (gps && Number.isFinite(gps.latitude) && Number.isFinite(gps.longitude)) {
+        lat = gps.latitude;
+        lon = gps.longitude;
+      }
+    } catch (e) {
+      console.warn('exifr.gps:', e);
+    }
+  }
+
+  if (Number.isFinite(lat) && Number.isFinite(lon)) {
+    return (await reverseGeocodePhoto(lat, lon)) || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+  }
+
+  return pickExifLocationLabel(parsed);
 }
 
 function isUsableImageSrc(src) {
@@ -1179,8 +1483,19 @@ async function readFolderImageAtIndex(index, retry = 0) {
   }
 }
 
+function detectAppleMobilePlatform() {
+  const ua = navigator.userAgent || '';
+  if (/iPhone|iPod|iPad/i.test(ua)) return true;
+  const platform = navigator.platform || '';
+  if (/iPad/i.test(platform)) return true;
+  if (navigator.maxTouchPoints > 1 && (/Macintosh|MacIntel/i.test(ua) || platform === 'MacIntel')) {
+    return true;
+  }
+  return false;
+}
+
 function isAppleMobileDevice() {
-  return document.documentElement.classList.contains('platform-ios');
+  return detectAppleMobilePlatform();
 }
 
 function supportsDirectoryPicker() {
@@ -1206,12 +1521,17 @@ function updateFolderPickerButtons() {
   const galleryLabel = document.getElementById('btn-add-photo-gallery-ios');
   if (!nativeBtn || !fallbackLabel) return;
 
-  document.documentElement.classList.toggle('platform-ios', isAppleMobileDevice());
+  const onAppleMobile = isAppleMobileDevice();
+  document.documentElement.classList.toggle('platform-ios', onAppleMobile);
 
-  if (isAppleMobileDevice()) {
+  if (onAppleMobile) {
     nativeBtn.hidden = true;
     fallbackLabel.hidden = true;
-    if (galleryLabel) galleryLabel.hidden = false;
+    if (galleryLabel) {
+      galleryLabel.hidden = false;
+      const hasGallery = State.linkedFolders.some((folder) => folder.gallerySource);
+      galleryLabel.textContent = hasGallery ? 'Adicionar mais fotos' : 'Incluir fotos da galeria';
+    }
     return;
   }
 
@@ -1281,7 +1601,7 @@ async function afterFolderAdded({ notify = true } = {}) {
 async function bindFolderHandle(dir) {
   folderPickInProgress = true;
   try {
-    const granted = await requestFolderReadPermission({ handle: dir, name: dir.name });
+    const granted = await requestHandleReadPermission(dir);
     if (!granted) {
       showToast('Permissão de leitura da pasta negada');
       return;
@@ -1332,19 +1652,43 @@ async function handleGalleryPickerInput(input) {
     return;
   }
 
-  const files = Array.from(input.files || []);
+  const files = Array.from(input.files || []).filter((file) => isDisplayableImageFile(file));
   input.value = '';
   if (!files.length) {
     showToast('Nenhuma foto selecionada');
     return;
   }
 
-  void applySessionFolder(files, { name: 'Galeria de Fotos' });
+  const existingGallery = State.linkedFolders.find((folder) => folder.gallerySource);
+  if (existingGallery) {
+    folderPickInProgress = true;
+    try {
+      const added = await appendToGalleryFolder(existingGallery.id, files);
+      await afterFolderAdded({ notify: false });
+      const total = existingGallery.files?.length || 0;
+      showToast(added
+        ? `${added} foto${added === 1 ? '' : 's'} adicionada${added === 1 ? '' : 's'} — ${total} no total`
+        : `Nenhuma foto nova — ${total} já incluída${total === 1 ? '' : 's'}`);
+    } catch (e) {
+      console.warn('appendToGalleryFolder:', e);
+      showToast('Erro ao adicionar fotos da galeria');
+    } finally {
+      folderPickInProgress = false;
+    }
+    return;
+  }
+
+  void applySessionFolder(files, { name: 'Galeria de Fotos', gallerySource: true });
 }
 
 async function handleFolderFallbackInput(input) {
   if (folderPickInProgress) {
     showToast('Aguarde o processamento da pasta anterior');
+    return;
+  }
+
+  if (isAppleMobileDevice()) {
+    void handleGalleryPickerInput(input);
     return;
   }
 
@@ -1396,9 +1740,18 @@ function setupFolderPickerUi() {
       openFolderPicker();
     });
   }
+
+  const galleryLabel = document.getElementById('btn-add-photo-gallery-ios');
+  if (galleryLabel && !galleryLabel.dataset.bound) {
+    galleryLabel.dataset.bound = '1';
+    galleryLabel.addEventListener('click', (e) => {
+      e.preventDefault();
+      openGalleryPicker();
+    });
+  }
 }
 
-async function applySessionFolder(files, { name } = {}) {
+async function applySessionFolder(files, { name, gallerySource = false } = {}) {
   const allFiles = Array.from(files);
   if (!allFiles.length) return false;
 
@@ -1411,15 +1764,15 @@ async function applySessionFolder(files, { name } = {}) {
 
   folderPickInProgress = true;
   try {
-    const added = await addLinkedSessionFolder(root, allFiles);
+    const added = await addLinkedSessionFolder(root, allFiles, { gallerySource });
     if (!added) return false;
 
     await afterFolderAdded({ notify: true });
 
     if (!imageFiles.length) {
       showToast('Nenhuma imagem compatível selecionada (jpg, png, gif, webp, heic)');
-    } else if (isAppleMobileDevice()) {
-      showToast('Fotos da galeria incluídas — válidas nesta sessão');
+    } else if (gallerySource) {
+      showToast(`${imageFiles.length} foto${imageFiles.length === 1 ? '' : 's'} da galeria salva${imageFiles.length === 1 ? '' : 's'} neste dispositivo`);
     } else if (!supportsDirectoryPicker()) {
       showToast('Pasta válida só nesta sessão — abra em Chrome/Edge (https) para salvar');
     }
@@ -1527,7 +1880,9 @@ function renderLinkedFoldersList() {
 
   list.innerHTML = State.linkedFolders.map((folder) => {
     const safeName = escapeHtml(folder.name);
-    const kind = folder.handle ? 'salva neste dispositivo' : 'somente nesta sessão';
+    const kind = folder.gallerySource
+      ? 'salva neste dispositivo'
+      : (folder.handle ? 'salva neste dispositivo' : 'somente nesta sessão');
     return `
     <li class="linked-folder-item" data-folder-id="${folder.id}">
       <span class="linked-folder-name" title="${safeName}">📁 ${safeName}</span>
@@ -1689,6 +2044,123 @@ function formatDate(date) {
   return `${DIAS[date.getDay()]}, ${date.getDate()} de ${MESES[date.getMonth()]}`;
 }
 
+function formatPhotoDate(date) {
+  return `${DIAS[date.getDay()]}, ${date.getDate()} de ${MESES[date.getMonth()]} de ${date.getFullYear()}`;
+}
+
+function formatPhotoTime(date) {
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+let clockPhotoMetaRequest = 0;
+
+async function getPhotoFileAtIndex(index) {
+  if (usesFolderSource()) {
+    const names = await getFolderPlaylistNames();
+    if (!names.length) return null;
+    return getFileForPlaylistPath(names[index % names.length]);
+  }
+
+  if (!State.photos.length) return null;
+  const photo = State.photos[index % State.photos.length];
+  const url = photo?.url;
+  if (!url || (!url.startsWith('blob:') && !url.startsWith('data:'))) return null;
+
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    return new File([blob], photo.name || 'photo.jpg', { type: blob.type || 'image/jpeg' });
+  } catch (e) {
+    console.warn('getPhotoFileAtIndex:', e);
+    return null;
+  }
+}
+
+async function extractPhotoMetadata(file) {
+  if (!file) return null;
+
+  const meta = { location: null, date: null, time: null };
+
+  try {
+    await loadExifrLibrary();
+    if (exifrAvailable()) {
+      const parsed = await exifr.parse(file, {
+        gps: true,
+        tiff: true,
+        exif: true,
+        ifd0: true,
+        iptc: true,
+        xmp: true,
+        mergeOutput: true,
+      });
+
+      const dt = parsed?.DateTimeOriginal || parsed?.CreateDate || parsed?.ModifyDate;
+      if (dt instanceof Date && !Number.isNaN(dt.getTime())) {
+        meta.date = formatPhotoDate(dt);
+        meta.time = formatPhotoTime(dt);
+      }
+
+      meta.location = await resolvePhotoLocation(file, parsed);
+    }
+  } catch (e) {
+    console.warn('extractPhotoMetadata:', e);
+  }
+
+  if (!meta.date && file.lastModified) {
+    const fallback = new Date(file.lastModified);
+    if (!Number.isNaN(fallback.getTime())) {
+      meta.date = formatPhotoDate(fallback);
+      meta.time = formatPhotoTime(fallback);
+    }
+  }
+
+  return meta;
+}
+
+function hideClockPhotoMeta() {
+  document.getElementById('clock-photo-meta')?.classList.add('hidden');
+}
+
+async function updateClockPhotoMeta(photoIndex) {
+  const overlay = document.getElementById('clock-photo-meta');
+  if (!overlay) return;
+
+  const requestId = ++clockPhotoMetaRequest;
+  const file = await getPhotoFileAtIndex(photoIndex);
+  if (requestId !== clockPhotoMetaRequest) return;
+
+  const meta = await extractPhotoMetadata(file);
+  if (requestId !== clockPhotoMetaRequest) return;
+
+  const locLine = document.getElementById('clock-photo-meta-location');
+  const locValue = document.getElementById('clock-photo-meta-location-value');
+  const dateLine = document.getElementById('clock-photo-meta-date');
+  const timeLine = document.getElementById('clock-photo-meta-time');
+
+  const hasLocation = Boolean(meta?.location);
+  const hasDate = Boolean(meta?.date);
+  const hasTime = Boolean(meta?.time);
+
+  if (!hasLocation && !hasDate && !hasTime) {
+    hideClockPhotoMeta();
+    return;
+  }
+
+  overlay.classList.remove('hidden');
+  if (locLine) {
+    locLine.hidden = !hasLocation;
+    if (locValue) locValue.textContent = meta.location || '';
+  }
+  if (dateLine) {
+    dateLine.textContent = meta.date || '';
+    dateLine.hidden = !hasDate;
+  }
+  if (timeLine) {
+    timeLine.textContent = meta.time || '';
+    timeLine.hidden = !hasTime;
+  }
+}
+
 function tickClock() {
   const now = new Date();
   const timeStr = formatTime(now);
@@ -1715,6 +2187,14 @@ function tickClock() {
 
   // modo noturno
   checkNightMode(now);
+
+  if (State.weatherData?.hourly) {
+    const hourlyStamp = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}`;
+    if (tickClock._hourlyStamp !== hourlyStamp) {
+      tickClock._hourlyStamp = hourlyStamp;
+      renderHourlyForecast(State.weatherData.hourly);
+    }
+  }
 }
 
 function checkNightMode(now) {
@@ -1901,7 +2381,7 @@ function updateWeatherUI(w) {
   set('cam-weather', `${w.icon} ${w.temp}`);
 
   renderDailyForecast(w.daily);
-  renderHourlyForecast(w.hourly, w.hourlyOffset);
+  renderHourlyForecast(w.hourly);
   updateCityNav();
 }
 
@@ -1931,7 +2411,50 @@ function renderDailyForecast(daily) {
   });
 }
 
-function renderHourlyForecast(hourly, currentTime) {
+const HOURLY_SLOT_HOURS = [0, 3, 6, 9, 12, 15, 18, 21];
+const HOURLY_SLOT_COUNT = 8;
+
+function getUpcoming3HourSlots(count = HOURLY_SLOT_COUNT, now = new Date()) {
+  const slots = [];
+  for (let dayOffset = 0; dayOffset < 3 && slots.length < count; dayOffset += 1) {
+    for (const hour of HOURLY_SLOT_HOURS) {
+      const slot = new Date(now);
+      slot.setDate(slot.getDate() + dayOffset);
+      slot.setHours(hour, 0, 0, 0);
+      if (slot.getTime() > now.getTime()) {
+        slots.push(slot);
+        if (slots.length >= count) break;
+      }
+    }
+  }
+  return slots;
+}
+
+function findHourlyIndexForTime(hourly, when) {
+  const target = when.getTime();
+  for (let i = 0; i < hourly.time.length; i += 1) {
+    const ts = new Date(hourly.time[i]).getTime();
+    if (ts === target) return i;
+  }
+  for (let i = 0; i < hourly.time.length; i += 1) {
+    const ts = new Date(hourly.time[i]).getTime();
+    if (ts >= target) return i;
+  }
+  return -1;
+}
+
+function formatHourlyLabel(isoTime) {
+  if (!isoTime) return '--:--';
+  const h = parseInt(isoTime.substring(11, 13), 10);
+  const m = isoTime.substring(14, 16);
+  return `${String(h).padStart(2, '0')}:${m}`;
+}
+
+function formatHourlyLabelFromDate(date) {
+  return `${String(date.getHours()).padStart(2, '0')}:00`;
+}
+
+function renderHourlyForecast(hourly) {
   const el = document.getElementById('weather-hourly');
   if (!el) return;
   if (!hourly) {
@@ -1939,22 +2462,29 @@ function renderHourlyForecast(hourly, currentTime) {
     return;
   }
   el.innerHTML = '';
-  const TARGET_HOURS = [15, 18, 21, 0, 3, 6, 9, 12];
-  const slots = TARGET_HOURS.map(h => hourly.time.findIndex(t => {
-    const th = parseInt(t.substring(11, 13));
-    return th === h;
-  })).filter(i => i >= 0);
-  slots.forEach((idx) => {
-    const timeStr = hourly.time[idx] || '';
-    const h = timeStr.substring(11, 16);
-    const code = hourly.weather_code[idx];
-    const temp = Math.round(hourly.temperature_2m[idx]);
+
+  const now = new Date();
+  const upcoming = getUpcoming3HourSlots(HOURLY_SLOT_COUNT, now);
+
+  while (upcoming.length < HOURLY_SLOT_COUNT) {
+    const last = upcoming[upcoming.length - 1] || now;
+    const next = new Date(last);
+    next.setHours(next.getHours() + 3, 0, 0, 0);
+    upcoming.push(next);
+  }
+
+  upcoming.slice(0, HOURLY_SLOT_COUNT).forEach((slotWhen) => {
+    const idx = findHourlyIndexForTime(hourly, slotWhen);
+    const hasData = idx >= 0;
+    const timeStr = hasData ? hourly.time[idx] : '';
+    const code = hasData ? hourly.weather_code[idx] : null;
+    const temp = hasData ? Math.round(hourly.temperature_2m[idx]) : null;
     const col = document.createElement('div');
     col.className = 'forecast-col';
     col.innerHTML = `
-      <span class="fc-day">${h}</span>
+      <span class="fc-day">${hasData ? formatHourlyLabel(timeStr) : formatHourlyLabelFromDate(slotWhen)}</span>
       <span class="fc-icon">${WMO_ICONS[code] || '🌡'}</span>
-      <span class="fc-max">${temp}°</span>
+      <span class="fc-max">${temp != null ? `${temp}°` : '--°'}</span>
     `;
     el.appendChild(col);
   });
@@ -2053,6 +2583,7 @@ async function updateClockPhoto(skipAttempts = 0) {
     img.removeAttribute('src');
     img.style.opacity = '0';
     if (empty) empty.style.display = 'flex';
+    hideClockPhotoMeta();
     await updateClockPhotoNav();
     return;
   }
@@ -2062,12 +2593,14 @@ async function updateClockPhoto(skipAttempts = 0) {
     img.removeAttribute('src');
     img.style.opacity = '0';
     if (empty) empty.style.display = 'flex';
+    hideClockPhotoMeta();
     await updateClockPhotoNav();
     return;
   }
 
   if (clockPhotoIndex >= count) clockPhotoIndex = 0;
-  const { src } = await resolvePhotoAtIndex(clockPhotoIndex % count);
+  const currentIndex = clockPhotoIndex % count;
+  const { src } = await resolvePhotoAtIndex(currentIndex);
   if (!isUsableImageSrc(src)) {
     clockPhotoIndex = (clockPhotoIndex + 1) % count;
     return updateClockPhoto(skipAttempts + 1);
@@ -2084,12 +2617,14 @@ async function updateClockPhoto(skipAttempts = 0) {
     img.src = src;
     img.style.opacity = '1';
     if (empty) empty.style.display = 'none';
+    void updateClockPhotoMeta(currentIndex);
   };
   loader.onerror = () => {
     console.warn('clock photo failed to load');
     revokeClockPhotoObjectUrl();
     img.removeAttribute('src');
     img.style.opacity = '0';
+    hideClockPhotoMeta();
     clockPhotoIndex = (clockPhotoIndex + 1) % count;
     void updateClockPhoto(skipAttempts + 1);
   };
@@ -2305,13 +2840,9 @@ function switchMode(mode) {
 
   State.mode = mode;
   document.querySelectorAll('.mode').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
 
   const modeEl = document.getElementById(`mode-${mode}`);
   if (modeEl) modeEl.classList.add('active');
-
-  const navBtn = document.querySelector(`[data-mode="${mode}"]`);
-  if (navBtn) navBtn.classList.add('active');
 
   if (mode === 'slideshow') void startSlideshow();
   if (mode === 'cameras') renderCameras();
@@ -2319,15 +2850,17 @@ function switchMode(mode) {
 
 // ─── CONFIGURAÇÕES UI ─────────────────────────
 async function refreshStoredFolderAccess() {
+  await syncPersistedFolderPermissions();
+  const needs = await getFoldersNeedingPermission();
+  if (needs.length > 0) {
+    await grantAllFolderAccess();
+  }
   await updateFolderPermissionBanner();
   void updateLinkedFoldersPermissionLabels();
 }
 
 function openSettings() {
   const cfg = State.cfg;
-  document.getElementById('cfg-city').value = cfg.city;
-  document.getElementById('cfg-api-key').value = cfg.apiKey;
-  updateSaveWeatherBtn();
   document.getElementById('cfg-interval').value = cfg.interval;
   document.getElementById('cfg-transition').value = cfg.transition || 'fade';
   document.getElementById('cfg-24h').checked = cfg.format24h;
@@ -2336,6 +2869,7 @@ function openSettings() {
   document.getElementById('cfg-night-end').value = cfg.nightEnd;
   document.getElementById('cfg-wakelock').checked = cfg.wakelock;
 
+  renderSettingsCitiesList();
   renderFolderInfo();
   updateFolderPickerButtons();
   void (async () => {
@@ -2390,31 +2924,6 @@ function initSettingsSections() {
   });
 }
 
-function updateSaveWeatherBtn() {
-  const btn = document.getElementById('btn-save-weather');
-  if (!btn) return;
-  const cityChanged = document.getElementById('cfg-city').value.trim() !== State.cfg.city;
-  const keyChanged = document.getElementById('cfg-api-key').value.trim() !== State.cfg.apiKey;
-  const changed = cityChanged || keyChanged;
-  btn.disabled = !changed;
-  btn.style.opacity = changed ? '1' : '0.4';
-  btn.style.cursor = changed ? 'pointer' : 'not-allowed';
-}
-
-function saveWeatherConfig() {
-  const newCity = document.getElementById('cfg-city').value.trim();
-  const newKey = document.getElementById('cfg-api-key').value.trim();
-  if (newCity !== State.cfg.city) {
-    State.cfg.lat = null;
-    State.cfg.lon = null;
-  }
-  State.cfg.city = newCity;
-  State.cfg.apiKey = newKey;
-  saveConfig();
-  startWeatherTimer();
-  showToast('Clima atualizado!');
-}
-
 function saveDisplayConfig() {
   State.cfg.format24h = document.getElementById('cfg-24h').checked;
   State.cfg.nightAuto = document.getElementById('cfg-night-auto').checked;
@@ -2447,14 +2956,39 @@ async function releaseWakeLock() {
 }
 
 // ─── TELA CHEIA ──────────────────────────────
+function isFullscreen() {
+  return !!(document.fullscreenElement || document.webkitFullscreenElement);
+}
+
+function updateFullscreenFab() {
+  const btn = document.getElementById('btn-fullscreen-fab');
+  if (!btn) return;
+  const fs = isFullscreen();
+  btn.querySelector('.fab-icon-enter')?.classList.toggle('hidden', fs);
+  btn.querySelector('.fab-icon-exit')?.classList.toggle('hidden', !fs);
+  const label = fs ? 'Sair da tela cheia' : 'Tela cheia';
+  btn.setAttribute('aria-label', label);
+  btn.setAttribute('title', label);
+}
+
 function toggleFullscreen() {
-  if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+  if (!isFullscreen()) {
     const el = document.documentElement;
-    if (el.requestFullscreen) el.requestFullscreen();
-    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    const request = el.requestFullscreen
+      || el.webkitRequestFullscreen
+      || el.msRequestFullscreen;
+    if (request) {
+      const result = request.call(el);
+      if (result?.catch) result.catch((e) => console.warn('requestFullscreen:', e));
+    }
   } else {
-    if (document.exitFullscreen) document.exitFullscreen();
-    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    const exit = document.exitFullscreen
+      || document.webkitExitFullscreen
+      || document.msExitFullscreen;
+    if (exit) {
+      const result = exit.call(document);
+      if (result?.catch) result.catch((e) => console.warn('exitFullscreen:', e));
+    }
   }
 }
 
@@ -2474,21 +3008,171 @@ function showToast(msg) {
 }
 
 // ─── CIDADES SALVAS ──────────────────────────
-function getCityNavList() {
-  const saved = loadSavedCities();
-  const currentQuery = (State.cfg.city || '').trim();
-  if (!currentQuery) return saved;
+function loadSavedCities() {
+  try {
+    return JSON.parse(localStorage.getItem('sd_saved_cities') || '[]');
+  } catch { return []; }
+}
 
-  if (!saved.some((city) => city.query === currentQuery)) {
-    return [{
-      name: currentQuery.split(',')[0],
-      query: currentQuery,
-      lat: State.cfg.lat ?? null,
-      lon: State.cfg.lon ?? null,
-    }, ...saved];
+function saveSavedCities(cities) {
+  localStorage.setItem('sd_saved_cities', JSON.stringify(cities));
+}
+
+function getFavoriteCity() {
+  const cities = loadSavedCities();
+  return cities.find((city) => city.favorite) || cities[0] || null;
+}
+
+function setFavoriteCity(query) {
+  const cities = loadSavedCities();
+  let found = false;
+  cities.forEach((city) => {
+    const isFavorite = city.query === query;
+    city.favorite = isFavorite;
+    if (isFavorite) found = true;
+  });
+  if (!found) return null;
+  saveSavedCities(cities);
+  const favorite = cities.find((city) => city.query === query);
+  if (favorite) applyCity(favorite, { refreshLists: false });
+  renderSettingsCitiesList();
+  renderSavedCities();
+  updateCityNav();
+  return favorite;
+}
+
+function addSavedCity(name, query, lat, lon, { favorite = false } = {}) {
+  const cities = loadSavedCities();
+  const existing = cities.findIndex((city) => city.query === query);
+  const wasFavorite = existing !== -1 && cities[existing]?.favorite;
+
+  if (existing !== -1) cities.splice(existing, 1);
+
+  const entry = {
+    name,
+    query,
+    lat: lat ?? null,
+    lon: lon ?? null,
+    favorite: favorite || wasFavorite || cities.length === 0,
+  };
+
+  if (entry.favorite) {
+    cities.forEach((city) => { city.favorite = false; });
   }
 
-  return saved;
+  cities.unshift(entry);
+  saveSavedCities(cities.slice(0, 10));
+  return entry;
+}
+
+function deleteSavedCity(index) {
+  const cities = loadSavedCities();
+  const removed = cities[index];
+  if (!removed) return;
+
+  cities.splice(index, 1);
+
+  if (removed.favorite && cities.length > 0) {
+    cities[0].favorite = true;
+  }
+
+  saveSavedCities(cities);
+
+  if (removed.query === State.cfg.city) {
+    const next = getFavoriteCity();
+    if (next) applyCity(next);
+    else {
+      State.cfg.city = '';
+      State.cfg.lat = null;
+      State.cfg.lon = null;
+      saveConfig();
+      startWeatherTimer();
+    }
+  }
+
+  renderSettingsCitiesList();
+  renderSavedCities();
+  updateCityNav();
+}
+
+function initCitiesFromStorage() {
+  let cities = loadSavedCities();
+  const currentQuery = (State.cfg.city || '').trim();
+
+  if (!cities.length && currentQuery) {
+    addSavedCity(
+      currentQuery.split(',')[0],
+      currentQuery,
+      State.cfg.lat,
+      State.cfg.lon,
+      { favorite: true }
+    );
+    return;
+  }
+
+  const favorite = getFavoriteCity();
+  if (favorite && favorite.query !== State.cfg.city) {
+    applyCity(favorite, { refreshLists: false, silent: true });
+  } else if (!favorite && cities.length > 0) {
+    cities[0].favorite = true;
+    saveSavedCities(cities);
+    applyCity(cities[0], { refreshLists: false, silent: true });
+  }
+}
+
+function renderSettingsCitiesList() {
+  const list = document.getElementById('settings-cities-list');
+  const empty = document.getElementById('settings-cities-empty');
+  if (!list || !empty) return;
+
+  const cities = loadSavedCities();
+  if (!cities.length) {
+    list.innerHTML = '';
+    list.classList.add('hidden');
+    empty.classList.remove('hidden');
+    return;
+  }
+
+  empty.classList.add('hidden');
+  list.classList.remove('hidden');
+  list.innerHTML = cities.map((city, index) => {
+    const safeName = escapeHtml(city.name || city.query);
+    const isFavorite = Boolean(city.favorite);
+    return `
+      <li class="settings-city-item${isFavorite ? ' is-favorite' : ''}" data-index="${index}">
+        <button type="button" class="city-fav-btn${isFavorite ? ' is-favorite' : ''}" data-index="${index}" aria-label="${isFavorite ? 'Cidade favorita' : 'Favoritar cidade'}" title="${isFavorite ? 'Cidade favorita' : 'Favoritar'}">★</button>
+        <span class="settings-city-name" title="${safeName}">${safeName}</span>
+        <button type="button" class="settings-city-remove" data-index="${index}" aria-label="Remover ${safeName}" title="Remover">✕</button>
+      </li>
+    `;
+  }).join('');
+
+  list.querySelectorAll('.city-fav-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const index = Number(btn.getAttribute('data-index'));
+      const city = loadSavedCities()[index];
+      if (!city || city.favorite) return;
+      setFavoriteCity(city.query);
+      showToast(`Favorita: ${city.name || city.query}`);
+    });
+  });
+
+  list.querySelectorAll('.settings-city-remove').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const index = Number(btn.getAttribute('data-index'));
+      const city = loadSavedCities()[index];
+      if (!city) return;
+      if (!confirm(`Remover "${city.name || city.query}"?`)) return;
+      deleteSavedCity(index);
+      showToast(`Cidade removida`);
+    });
+  });
+}
+
+function getCityNavList() {
+  return loadSavedCities();
 }
 
 function findCurrentCityIndex(list) {
@@ -2496,15 +3180,18 @@ function findCurrentCityIndex(list) {
   return idx >= 0 ? idx : 0;
 }
 
-function applyCity(city) {
+function applyCity(city, { refreshLists = true, silent = false } = {}) {
   if (!city?.query) return;
   State.cfg.city = city.query;
   State.cfg.lat = city.lat ?? null;
   State.cfg.lon = city.lon ?? null;
   saveConfig();
-  const cfgCity = document.getElementById('cfg-city');
-  if (cfgCity) cfgCity.value = city.query;
   startWeatherTimer();
+  if (refreshLists) {
+    renderSettingsCitiesList();
+    renderSavedCities();
+    updateCityNav();
+  }
 }
 
 function navigateCity(delta) {
@@ -2531,34 +3218,16 @@ function updateCityNav() {
   }
 }
 
-function loadSavedCities() {
-  try {
-    return JSON.parse(localStorage.getItem('sd_saved_cities') || '[]');
-  } catch { return []; }
-}
-
-function saveSavedCities(cities) {
-  localStorage.setItem('sd_saved_cities', JSON.stringify(cities));
-}
-
-function addSavedCity(name, query, lat, lon) {
-  const cities = loadSavedCities();
-  const existing = cities.findIndex(c => c.query === query);
-  if (existing !== -1) cities.splice(existing, 1);
-  cities.unshift({ name, query, lat: lat ?? null, lon: lon ?? null });
-  saveSavedCities(cities.slice(0, 10));
-}
-
 function renderSavedCities() {
   const list = document.getElementById('city-saved-list');
   const section = document.getElementById('city-saved-section');
   if (!list) return;
   const cities = loadSavedCities();
   if (cities.length === 0) {
-    section.style.display = 'none';
+    if (section) section.style.display = 'none';
     return;
   }
-  section.style.display = '';
+  if (section) section.style.display = '';
   list.innerHTML = '';
   cities.forEach((city, i) => {
     const item = document.createElement('div');
@@ -2568,9 +3237,10 @@ function renderSavedCities() {
     const coords = (city.lat != null && city.lon != null)
       ? `${Number(city.lat).toFixed(4)}, ${Number(city.lon).toFixed(4)}`
       : 'sem coordenadas';
+    const favMark = city.favorite ? ' ★' : '';
     item.innerHTML = `
       <div class="city-saved-info">
-        <span class="city-saved-name">${city.name}</span>
+        <span class="city-saved-name">${escapeHtml(city.name)}${favMark}</span>
         <span class="city-saved-coords">${coords}</span>
       </div>
       <button class="city-saved-del" title="Remover" data-index="${i}">✕</button>
@@ -2582,11 +3252,7 @@ function renderSavedCities() {
     });
     item.querySelector('.city-saved-del').addEventListener('click', e => {
       e.stopPropagation();
-      const cities = loadSavedCities();
-      cities.splice(i, 1);
-      saveSavedCities(cities);
-      renderSavedCities();
-      updateCityNav();
+      deleteSavedCity(i);
     });
     list.appendChild(item);
   });
@@ -2687,8 +3353,8 @@ async function searchCities(query) {
         ${parts ? `<span class="city-result-country">${parts}</span>` : ''}
       `;
       item.addEventListener('click', () => {
-        addSavedCity(city.name, city.query, city.lat, city.lon);
-        applyCity(city);
+        const entry = addSavedCity(city.name, city.query, city.lat, city.lon);
+        applyCity(entry);
         closeCitySearch();
         showToast(`Cidade: ${city.name}`);
       });
@@ -2702,13 +3368,7 @@ async function searchCities(query) {
 
 // ─── LISTENERS ───────────────────────────────
 function bindEvents() {
-  // navegação
-  document.querySelectorAll('.nav-btn[data-mode]').forEach(btn => {
-    btn.addEventListener('click', () => switchMode(btn.dataset.mode));
-  });
-
   // settings
-  document.getElementById('btn-settings').addEventListener('click', openSettings);
   document.getElementById('btn-settings-fab')?.addEventListener('click', openSettings);
   document.getElementById('clock-photo-empty')?.addEventListener('click', openSettings);
   document.getElementById('btn-close-settings').addEventListener('click', () => {
@@ -2718,9 +3378,7 @@ function bindEvents() {
   });
 
   // clima
-  document.getElementById('btn-save-weather').addEventListener('click', saveWeatherConfig);
-  document.getElementById('cfg-city').addEventListener('input', updateSaveWeatherBtn);
-  document.getElementById('cfg-api-key').addEventListener('input', updateSaveWeatherBtn);
+  document.getElementById('btn-add-city-settings')?.addEventListener('click', openCitySearch);
 
   // fotos
   document.getElementById('clock-photo-prev')?.addEventListener('click', () => {
@@ -2752,7 +3410,7 @@ function bindEvents() {
   });
 
   // câmeras
-  document.getElementById('btn-add-cam').addEventListener('click', () => {
+  document.getElementById('btn-add-cam')?.addEventListener('click', () => {
     const name = document.getElementById('cfg-cam-name').value.trim();
     const url = document.getElementById('cfg-cam-url').value.trim();
     if (!name || !url) { showToast('Preencha nome e URL'); return; }
@@ -2770,6 +3428,10 @@ function bindEvents() {
 
   // tela cheia
   document.getElementById('btn-fullscreen').addEventListener('click', toggleFullscreen);
+  document.getElementById('btn-fullscreen-fab')?.addEventListener('click', toggleFullscreen);
+  document.addEventListener('fullscreenchange', updateFullscreenFab);
+  document.addEventListener('webkitfullscreenchange', updateFullscreenFab);
+  updateFullscreenFab();
 
   // busca de cidade ao clicar no nome
   document.getElementById('clock-city-prev')?.addEventListener('click', (e) => {
@@ -2789,22 +3451,12 @@ function bindEvents() {
     clearTimeout(citySearchTimer);
     citySearchTimer = setTimeout(() => searchCities(e.target.value.trim()), 400);
   });
-
-  // nav bar — oculta após 5s sem toque no modo slideshow
-  let navTimeout;
-  document.addEventListener('touchstart', () => {
-    const nav = document.getElementById('nav-bar');
-    nav.style.opacity = '1';
-    clearTimeout(navTimeout);
-    if (State.mode === 'slideshow') {
-      navTimeout = setTimeout(() => { nav.style.opacity = '0'; }, 5000);
-    }
-  });
 }
 
 // ─── BOOT ────────────────────────────────────
 async function init() {
   loadConfig();
+  initCitiesFromStorage();
   loadFolderPlaylist();
   loadHiddenFolderPhotos();
   lastMidnightCheckDate = getTodayKey();
@@ -2826,10 +3478,17 @@ async function init() {
 
   try {
     await clearLegacyPhotoStorage();
-    await loadStoredFolderHandles();
+    if (isAppleMobileDevice()) {
+      await loadStoredGalleryFolders();
+    } else {
+      await loadStoredFolderHandles();
+    }
     if (usesFolderSource()) {
-      await refreshStoredFolderAccess();
+      await syncPersistedFolderPermissions();
       const access = await ensureAllLinkedFolderPermissions({ interactive: false });
+      if (!access.ok) {
+        setupDeferredFolderPermissionGrant();
+      }
       if (access.ok) {
         await ensureFolderPlaylistForToday();
       }

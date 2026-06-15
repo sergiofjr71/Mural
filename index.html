@@ -43,29 +43,34 @@
     }
     .mode { display: none; flex: 1; min-height: 0; }
     #mode-clock.active {
-      display: grid;
-      grid-template-columns: minmax(240px, 40vw) minmax(0, 1fr);
+      display: flex;
+      flex-direction: row;
       flex: 1;
       min-height: 0;
       width: 100%;
+      max-width: 100%;
       overflow: hidden;
     }
     .clock-wrapper {
-      padding: 24px 28px;
+      padding: 24px 28px 5px;
       min-width: 0;
+      align-self: start;
+      height: fit-content;
+      width: fit-content;
+      align-items: center;
     }
     #clock-photo-col {
       display: flex;
       min-width: 0;
       min-height: 0;
       height: 100%;
+      padding: 0;
     }
     #clock-photo-frame {
       flex: 1;
       min-height: 160px;
       position: relative;
-      border: 1px solid #0c1f3a;
-      background: #071428;
+      background: #030b18;
     }
     #clock-time {
       font-size: clamp(56px, 12vw, 120px);
@@ -80,30 +85,13 @@
       margin-top: 4px;
     }
     #clock-date {
-      font-size: clamp(16px, 2.5vw, 21px);
+      font-size: clamp(9px, 4vw, 23px);
+      font-weight: 200;
+      letter-spacing: 2px;
+      line-height: 1;
       color: #7a9cc0;
       margin-top: 12px;
     }
-    #nav-bar {
-      display: flex;
-      height: 64px;
-      background: #071428;
-      border-top: 1px solid #0c1f3a;
-    }
-    .nav-btn {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 2px;
-      border: none;
-      background: transparent;
-      color: #4a6080;
-      font-size: 11px;
-      cursor: pointer;
-    }
-    .nav-btn.active { color: #1a6fff; }
   </style>
   <title>SmartDisplay</title>
   <link rel="stylesheet" href="css/style.css">
@@ -111,10 +99,10 @@
     (function () {
       var root = document.documentElement;
       var ua = navigator.userAgent || '';
-      var isIOS = /iPhone|iPod|iPad/i.test(ua);
-      var isIPadOS = /Macintosh/i.test(ua)
-        && navigator.maxTouchPoints > 1
-        && window.matchMedia('(hover: none), (pointer: coarse)').matches;
+      var platform = navigator.platform || '';
+      var isIOS = /iPhone|iPod|iPad/i.test(ua) || /iPad/i.test(platform);
+      var isIPadOS = navigator.maxTouchPoints > 1
+        && (/Macintosh|MacIntel/i.test(ua) || platform === 'MacIntel');
       root.classList.toggle('platform-ios', isIOS || isIPadOS);
     })();
   </script>
@@ -168,6 +156,13 @@
         <div id="clock-photo-frame">
           <img id="clock-photo-img" alt="">
           <div id="clock-photo-empty">Configurar Fotos</div>
+          <div id="clock-photo-meta" class="clock-photo-meta hidden" aria-live="polite">
+            <div id="clock-photo-meta-location" class="clock-photo-meta-line clock-photo-meta-location" hidden>
+              <span class="clock-photo-meta-kicker">Local</span><span id="clock-photo-meta-location-value"></span>
+            </div>
+            <div id="clock-photo-meta-date" class="clock-photo-meta-line"></div>
+            <div id="clock-photo-meta-time" class="clock-photo-meta-line"></div>
+          </div>
           <button type="button" id="clock-photo-prev" class="clock-photo-nav" aria-label="Foto anterior" disabled>
             <svg class="clock-photo-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M16 5 9 12 16 19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
@@ -212,26 +207,14 @@
       </div>
     </div>
 
-    <!-- BARRA DE NAVEGAÇÃO -->
-    <nav id="nav-bar">
-      <button class="nav-btn active" data-mode="clock" aria-label="Relógio">
-        <span class="nav-icon">🕐</span>
-        <span class="nav-label">Relógio</span>
-      </button>
-      <button class="nav-btn" data-mode="slideshow" aria-label="Fotos">
-        <span class="nav-icon">🖼</span>
-        <span class="nav-label">Fotos</span>
-      </button>
-      <button class="nav-btn" data-mode="cameras" aria-label="Câmeras">
-        <span class="nav-icon">📹</span>
-        <span class="nav-label">Câmeras</span>
-      </button>
-      <button class="nav-btn" id="btn-settings" aria-label="Configurações">
-        <span class="nav-icon">⚙️</span>
-        <span class="nav-label">Config</span>
-      </button>
-    </nav>
-
+    <button type="button" id="btn-fullscreen-fab" class="fullscreen-fab" aria-label="Tela cheia" title="Tela cheia">
+      <svg class="settings-fab-icon fab-icon-enter" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+      <svg class="settings-fab-icon fab-icon-exit hidden" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </button>
     <button type="button" id="btn-settings-fab" class="settings-fab" aria-label="Configurações" title="Configurações">
       <svg class="settings-fab-icon" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
@@ -255,14 +238,11 @@
           <span class="settings-section-chevron" aria-hidden="true">▾</span>
         </button>
         <div id="settings-section-weather" class="settings-section-body">
-        <label>Cidade
-          <input type="text" id="cfg-city" placeholder="Ex: São Paulo" autocomplete="off">
-        </label>
-        <label>Chave API OpenWeatherMap
-          <input type="text" id="cfg-api-key" placeholder="Cole sua chave gratuita aqui" autocomplete="off">
-        </label>
-        <p class="settings-hint">Clima via <strong>Open-Meteo</strong> (sem chave). Chave OpenWeatherMap é opcional para busca de cidades.</p>
-        <button class="btn-action" id="btn-save-weather">Salvar e atualizar clima</button>
+        <p class="settings-hint">Clima via <strong>Open-Meteo</strong> — sem necessidade de chave de API.</p>
+        <p class="settings-hint settings-hint--optional">A cidade favorita (★) é exibida ao abrir o app.</p>
+        <p id="settings-cities-empty" class="settings-hint linked-folders-empty">Nenhuma cidade cadastrada.</p>
+        <ul id="settings-cities-list" class="settings-cities-list linked-folders-list hidden" aria-live="polite"></ul>
+        <button type="button" class="btn-action btn-action--compact" id="btn-add-city-settings">Adicionar cidade</button>
         </div>
       </div>
 
@@ -272,7 +252,8 @@
           <span class="settings-section-chevron" aria-hidden="true">▾</span>
         </button>
         <div id="settings-section-photos" class="settings-section-body">
-        <p class="settings-hint">Inclua <strong>várias pastas</strong> locais. O app grava o acesso à pasta (nome e permissão) — nada é importado. À meia-noite relê as pastas e monta uma nova lista aleatória de fotos.</p>
+        <p class="settings-hint settings-hint--desktop-folder">Inclua <strong>várias pastas</strong> locais. O app grava o acesso à pasta (nome e permissão) — nada é importado. À meia-noite relê as pastas e monta uma nova lista aleatória de fotos.</p>
+        <p class="settings-hint settings-hint--ios">No iPad/iPhone use <strong>Incluir fotos da galeria</strong>. Toque em <strong>Selecionar</strong> (canto superior direito) e marque várias fotos de uma vez — ou <strong>Selecionar tudo</strong> em um álbum. As fotos ficam salvas neste dispositivo; use <strong>Adicionar mais fotos</strong> para incluir outras depois.</p>
         <div class="photo-folder-row" id="photo-folder-row">
           <button type="button" class="btn-action folder-picker-btn" id="btn-add-photo-folder-native" hidden>Incluir pasta</button>
           <label for="cfg-photo-folder-fallback" class="btn-action folder-picker-btn" id="btn-add-photo-folder-fallback">Incluir pasta</label>
@@ -283,7 +264,7 @@
           </div>
         </div>
         <div id="folder-permission-banner" class="folder-permission-banner hidden" role="status">
-          <p class="settings-hint">Se necessário, autorize o acesso uma vez — o navegador guarda a permissão para este site.</p>
+          <p class="settings-hint">Se necessário, autorize o acesso uma vez — o navegador mantém a permissão para este site.</p>
           <button type="button" class="btn-action btn-action--compact" id="btn-grant-folder-access">Autorizar acesso às pastas</button>
         </div>
         <div class="photo-actions-row">
@@ -313,23 +294,6 @@
         </div>
       </div>
 
-      <div class="settings-section" data-section="cameras">
-        <button type="button" class="settings-section-toggle" aria-expanded="true" aria-controls="settings-section-cameras">
-          <h3>Câmeras ao vivo</h3>
-          <span class="settings-section-chevron" aria-hidden="true">▾</span>
-        </button>
-        <div id="settings-section-cameras" class="settings-section-body">
-        <p class="settings-hint">Adicione URLs de streams públicos (formato MJPEG, HLS ou imagem estática)</p>
-        <div id="cameras-list"></div>
-        <div class="cam-input-row">
-          <input type="text" id="cfg-cam-name" placeholder="Nome (ex: Paulista)">
-          <input type="text" id="cfg-cam-url" placeholder="URL do stream ou imagem">
-          <button class="btn-action" id="btn-add-cam">Adicionar</button>
-        </div>
-        <p class="settings-hint">Sugestões: câmeras de trânsito da CET-SP, webcams públicas, câmeras de praias da Prefeitura</p>
-        </div>
-      </div>
-
       <div class="settings-section" data-section="display">
         <button type="button" class="settings-section-toggle" aria-expanded="true" aria-controls="settings-section-display">
           <h3>Display</h3>
@@ -347,7 +311,7 @@
           <span class="toggle-track"></span>
         </label>
         <label>Início do modo noturno
-          <input type="time" id="cfg-night-start" value="22:00">
+          <input type="time" id="cfg-night-start" value="19:00">
         </label>
         <label>Fim do modo noturno
           <input type="time" id="cfg-night-end" value="07:00">
@@ -402,7 +366,7 @@
   </div>
 
   <input type="file" id="cfg-photo-folder-fallback" class="folder-picker-input" tabindex="-1" webkitdirectory directory multiple>
-  <input type="file" id="cfg-photo-gallery-ios" class="folder-picker-input" tabindex="-1" accept="image/*" multiple>
+  <input type="file" id="cfg-photo-gallery-ios" class="folder-picker-input" tabindex="-1" accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,image/*" multiple>
 
   <script src="js/app.js" defer></script>
 </body>
