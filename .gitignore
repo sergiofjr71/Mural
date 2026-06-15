@@ -1,0 +1,10 @@
+node_modules/
+www/
+ios/App/Pods/
+ios/App/App/public/
+ios/App/DerivedData/
+.DS_Store
+*.xcuserdata
+xcuserdata/
+dist/
+.capacitor/

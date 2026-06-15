@@ -74,16 +74,27 @@
       background: #030b18;
     }
     #clock-time {
-      font-size: clamp(46px, calc(12vw - 10px), 110px);
-      font-weight: 100;
-      letter-spacing: -2px;
+      position: relative;
+      display: inline-block;
+      font-family: 'Nunito', ui-rounded, 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: clamp(52px, calc(12vw - 6px), 110px);
+      font-weight: 700;
+      letter-spacing: -0.02em;
       line-height: 1;
+      color: rgba(255, 255, 255, 0.52);
+      -webkit-text-stroke: 2px rgba(255, 255, 255, 0.95);
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.78), 0 6px 18px rgba(0, 0, 0, 0.5);
     }
     #clock-seconds {
-      font-size: clamp(18px, 4vw, 32px);
-      font-weight: 200;
-      color: #4a6080;
+      position: relative;
+      display: inline-block;
+      font-family: 'Nunito', ui-rounded, 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: clamp(20px, 4.2vw, 32px);
+      font-weight: 600;
       margin-top: 4px;
+      color: rgba(255, 255, 255, 0.42);
+      -webkit-text-stroke: 1.2px rgba(255, 255, 255, 0.72);
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55), 0 4px 10px rgba(0, 0, 0, 0.38);
     }
     #clock-date {
       font-size: clamp(9px, 4vw, 23px);
@@ -95,7 +106,9 @@
     }
   </style>
   <title>SmartDisplay</title>
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="preload" href="fonts/Nunito-Bold.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="preload" href="fonts/Nunito-SemiBold.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="stylesheet" href="css/style.css?v=115">
   <script>
     (function () {
       var root = document.documentElement;
@@ -129,8 +142,8 @@
           </svg>
         </button>
         <div id="clock-left-col">
-        <div id="clock-time">00:00</div>
-        <div id="clock-seconds">00</div>
+        <div id="clock-time" data-text="00:00">00:00</div>
+        <div id="clock-seconds" data-text="00">00</div>
         <div id="clock-date">segunda-feira, 1 de janeiro</div>
         <div class="clock-divider"></div>
         <div id="weather-block">
@@ -257,6 +270,14 @@
         <div id="settings-section-photos" class="settings-section-body">
         <p class="settings-hint settings-hint--desktop-folder">Inclua <strong>várias pastas</strong> locais. O app grava o acesso à pasta (nome e permissão) — nada é importado. À meia-noite relê as pastas e monta uma nova lista aleatória de fotos.</p>
         <p class="settings-hint settings-hint--ios">No iPad/iPhone use <strong>Incluir fotos da galeria</strong>. Toque em <strong>Selecionar</strong> (canto superior direito) e marque várias fotos de uma vez — ou <strong>Selecionar tudo</strong> em um álbum. As fotos ficam salvas neste dispositivo; use <strong>Adicionar mais fotos</strong> para incluir outras depois.</p>
+        <div id="native-photo-library-panel" class="native-photo-library-panel" hidden>
+          <p class="settings-hint settings-hint--capacitor-ios">No app iOS, o Mural lê diretamente a <strong>biblioteca de fotos do iPad</strong>. Nenhuma imagem é copiada — apenas os identificadores são usados.</p>
+          <p id="native-photo-library-info" class="settings-hint native-photo-library-info">Carregando biblioteca…</p>
+          <div class="photo-actions-row">
+            <button type="button" class="btn-action btn-action--compact photo-actions-btn" id="btn-refresh-photo-library" disabled>Atualizar Biblioteca</button>
+            <button type="button" class="btn-action btn-action--compact photo-actions-btn" id="btn-request-photo-permission">Permitir acesso</button>
+          </div>
+        </div>
         <div class="photo-folder-row" id="photo-folder-row">
           <button type="button" class="btn-action folder-picker-btn" id="btn-add-photo-folder-native" hidden>Incluir pasta</button>
           <label for="cfg-photo-folder-fallback" class="btn-action folder-picker-btn" id="btn-add-photo-folder-fallback">Incluir pasta</label>
@@ -290,6 +311,7 @@
             <option value="fade">Fade (dissolver)</option>
             <option value="slide">Deslizar</option>
             <option value="zoom">Zoom in</option>
+            <option value="blur">Blur (desfoque)</option>
             <option value="kenburns">Ken Burns</option>
             <option value="random">Randômico</option>
           </select>
@@ -371,6 +393,11 @@
   <input type="file" id="cfg-photo-folder-fallback" class="folder-picker-input" tabindex="-1" webkitdirectory directory multiple>
   <input type="file" id="cfg-photo-gallery-ios" class="folder-picker-input" tabindex="-1" accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,image/*" multiple>
 
-  <script src="js/app.js" defer></script>
+  <script src="js/platform.js?v=115"></script>
+  <script src="js/photo-library-plugin.js?v=115"></script>
+  <script src="js/services/photo-shuffle-service.js?v=115"></script>
+  <script src="js/services/slideshow-service.js?v=115"></script>
+  <script src="js/services/photo-library-service.js?v=115"></script>
+  <script src="js/app.js?v=115" defer></script>
 </body>
 </html>

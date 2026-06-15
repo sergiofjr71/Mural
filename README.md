@@ -1,8 +1,10 @@
-# SmartDisplay PWA
+# SmartDisplay PWA / Mural
 
 App de quadro inteligente para iPad antigo — relógio, clima, slideshow de fotos e câmeras ao vivo.
 
 **Demo publicada:** [sergiofjr71.github.io/Mural](https://sergiofjr71.github.io/Mural/)
+
+**App iOS (Capacitor):** veja [CAPACITOR_IOS.md](CAPACITOR_IOS.md) para build e instalação no iPad com acesso nativo à biblioteca de fotos.
 
 ---
 

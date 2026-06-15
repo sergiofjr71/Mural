@@ -3,12 +3,14 @@
    Cache-first para HTML; CSS/JS direto no navegador
    ============================================ */
 
-const CACHE_NAME = 'smartdisplay-v110';
+const CACHE_NAME = 'smartdisplay-v112';
 
 const STATIC_ASSETS = [
   './',
   './index.html',
   './css/style.css',
+  './fonts/Nunito-SemiBold.ttf',
+  './fonts/Nunito-Bold.ttf',
   './js/heic2any.min.js',
   './js/app.js',
   './manifest.json',

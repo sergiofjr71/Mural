@@ -5,6 +5,22 @@
    Tipografia: sistema san-serif; dígitos com lnum
    ============================================ */
 
+@font-face {
+  font-family: 'Nunito';
+  src: url('../fonts/Nunito-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Nunito';
+  src: url('../fonts/Nunito-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -26,6 +42,7 @@
   --nav-h: 0px;
   --radius: 12px;
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  --clock-font: 'Nunito', ui-rounded, 'SF Pro Rounded', var(--font);
 }
 
 html, body {
@@ -364,21 +381,66 @@ body.clock-nav-visible .clock-photo-nav:not(:disabled) .clock-photo-nav-icon,
 }
 
 #clock-time {
-  font-size: clamp(46px, calc(12vw - 10px), 130px);
-  font-weight: 100;
-  letter-spacing: -2px;
-  color: var(--text);
+  position: relative;
+  display: inline-block;
+  font-family: var(--clock-font);
+  font-size: clamp(52px, calc(12vw - 6px), 130px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
   line-height: 1;
   font-variant-numeric: lining-nums tabular-nums;
+  isolation: isolate;
+  color: rgba(255, 255, 255, 0.52);
+  -webkit-text-stroke: 2px rgba(255, 255, 255, 0.95);
+  paint-order: stroke fill;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.78),
+    0 2px 0 rgba(255, 255, 255, 0.28),
+    0 6px 18px rgba(0, 0, 0, 0.5);
+}
+
+#clock-time::before {
+  content: attr(data-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: rgba(255, 255, 255, 0.38);
+  -webkit-text-stroke: 0 transparent;
+  filter: blur(8px);
+  opacity: 0.9;
+  z-index: -1;
+  pointer-events: none;
 }
 
 #clock-seconds {
-  font-size: clamp(18px, 4vw, 36px);
-  font-weight: 200;
-  color: var(--text-dim);
-  letter-spacing: 2px;
+  position: relative;
+  display: inline-block;
+  font-family: var(--clock-font);
+  font-size: clamp(20px, 4.2vw, 38px);
+  font-weight: 600;
+  letter-spacing: 0.08em;
   margin-top: 4px;
   font-variant-numeric: tabular-nums;
+  isolation: isolate;
+  color: rgba(255, 255, 255, 0.42);
+  -webkit-text-stroke: 1.2px rgba(255, 255, 255, 0.72);
+  paint-order: stroke fill;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.55),
+    0 4px 10px rgba(0, 0, 0, 0.38);
+}
+
+#clock-seconds::before {
+  content: attr(data-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: rgba(255, 255, 255, 0.28);
+  -webkit-text-stroke: 0 transparent;
+  filter: blur(5px);
+  opacity: 0.85;
+  z-index: -1;
+  pointer-events: none;
 }
 
 #clock-date {
@@ -414,7 +476,9 @@ body.clock-nav-visible .clock-photo-nav:not(:disabled) .clock-photo-nav-icon,
   justify-content: center;
   gap: 37px;
   width: 100%;
-  margin-top: -30px;
+  position: relative;
+  top: 20px;
+  margin-top: 0;
 }
 
 #weather-current-left {
@@ -616,7 +680,28 @@ body.clock-nav-visible .clock-photo-nav:not(:disabled) .clock-photo-nav-icon,
   font-variant-numeric: tabular-nums;
 }
 
-body.night-mode #clock-time { color: #4a7aaa; opacity: 0.6; }
+body.night-mode #clock-time {
+  color: rgba(140, 185, 230, 0.45);
+  -webkit-text-stroke-color: rgba(120, 170, 220, 0.75);
+  text-shadow:
+    0 1px 0 rgba(140, 185, 230, 0.45),
+    0 6px 18px rgba(0, 0, 0, 0.55);
+  opacity: 0.8;
+}
+
+body.night-mode #clock-time::before {
+  color: rgba(100, 150, 200, 0.3);
+}
+
+body.night-mode #clock-seconds {
+  color: rgba(120, 170, 220, 0.38);
+  -webkit-text-stroke-color: rgba(100, 150, 200, 0.55);
+  opacity: 0.75;
+}
+
+body.night-mode #clock-seconds::before {
+  color: rgba(90, 140, 190, 0.25);
+}
 body.night-mode #weather-temp-big { color: #2a4a6a; opacity: 0.6; }
 
 @media (max-width: 720px) {
@@ -1485,6 +1570,26 @@ html:not(.platform-ios) #btn-add-photo-gallery-ios {
   display: none !important;
 }
 
+html.platform-capacitor-ios .settings-hint--ios,
+html.platform-capacitor-ios .settings-hint--desktop-folder,
+html.platform-capacitor-ios #photo-folder-row {
+  display: none !important;
+}
+
+html.platform-capacitor-ios .settings-hint--capacitor-ios,
+html.platform-capacitor-ios #native-photo-library-panel {
+  display: block !important;
+}
+
+html:not(.platform-capacitor-ios) .settings-hint--capacitor-ios,
+html:not(.platform-capacitor-ios) #native-photo-library-panel {
+  display: none !important;
+}
+
+.native-photo-library-info {
+  color: var(--text-mid);
+}
+
 label.folder-picker-btn {
   display: block;
   cursor: pointer;
@@ -1984,6 +2089,12 @@ label.btn-choose-photo-folder {
 .fx-zoom .slide-img.slide-out { animation: fx-zoom-out 0.7s ease forwards; }
 @keyframes fx-zoom-in  { from { transform:scale(1.12); opacity:0 } to { transform:scale(1); opacity:1 } }
 @keyframes fx-zoom-out { from { opacity:1 } to { opacity:0 } }
+
+/* BLUR */
+.fx-blur .slide-img.slide-in  { animation: fx-blur-in 0.8s ease forwards; }
+.fx-blur .slide-img.slide-out { animation: fx-blur-out 0.8s ease forwards; }
+@keyframes fx-blur-in  { from { opacity:0; filter:blur(18px); transform:scale(1.03) } to { opacity:1; filter:blur(0); transform:scale(1) } }
+@keyframes fx-blur-out { from { opacity:1; filter:blur(0) } to { opacity:0; filter:blur(14px) } }
 
 /* KEN BURNS */
 .fx-kenburns .slide-img.active { animation: fx-kenburns 8s ease-in-out infinite alternate; }

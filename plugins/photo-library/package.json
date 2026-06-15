@@ -1,0 +1,30 @@
+{
+  "name": "photo-library",
+  "version": "1.0.0",
+  "description": "Capacitor plugin — acesso nativo à biblioteca de fotos iOS (PHPhotoLibrary)",
+  "main": "dist/plugin.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "files": [
+    "dist/",
+    "ios/",
+    "PhotoLibrary.podspec"
+  ],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  },
+  "scripts": {
+    "build": "npm run build:esm",
+    "build:esm": "tsc",
+    "watch": "tsc --watch"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/core": "^7.2.0",
+    "typescript": "^5.8.2"
+  }
+}

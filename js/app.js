@@ -119,6 +119,16 @@ function usesFolderSource() {
   return State.linkedFolders.length > 0;
 }
 
+function usesNativePhotoLibrary() {
+  return typeof PhotoLibraryService !== 'undefined'
+    && PhotoLibraryService.isEnabled()
+    && PhotoLibraryService.getCount() > 0;
+}
+
+function isNativePhotoLibraryMode() {
+  return typeof PhotoLibraryService !== 'undefined' && PhotoLibraryService.isEnabled();
+}
+
 function findLinkedFolderByName(name) {
   return State.linkedFolders.find((folder) => folder.name === name);
 }
@@ -883,7 +893,13 @@ function isUsableImageSrc(src) {
   return typeof src === 'string'
     && src.length > 0
     && src !== 'undefined'
-    && (src.startsWith('blob:') || src.startsWith('data:image/') || /^https?:/i.test(src));
+    && (
+      src.startsWith('blob:')
+      || src.startsWith('data:image/')
+      || /^https?:/i.test(src)
+      || src.includes('_capacitor_file_')
+      || src.startsWith('capacitor://')
+    );
 }
 
 function revokePreviewObjectUrls() {
@@ -1246,8 +1262,10 @@ async function rescanLinkedFolders({ notify = true, resetIndex = true, interacti
 
 function updatePhotoActionButtons() {
   const hasFolders = usesFolderSource();
+  const hasNativeLibrary = usesNativePhotoLibrary();
   const listBtn = document.getElementById('btn-show-photo-list');
   const rescanBtn = document.getElementById('btn-rescan-folders');
+  const refreshBtn = document.getElementById('btn-refresh-photo-library');
   if (listBtn) {
     listBtn.disabled = !hasFolders;
     if (!hasFolders) {
@@ -1255,7 +1273,8 @@ function updatePhotoActionButtons() {
       listBtn.classList.remove('is-active');
     }
   }
-  if (rescanBtn) rescanBtn.disabled = !hasFolders;
+  if (rescanBtn) rescanBtn.disabled = !hasFolders || isNativePhotoLibraryMode();
+  if (refreshBtn) refreshBtn.disabled = !isNativePhotoLibraryMode();
 }
 
 function formatPlaylistPath(path) {
@@ -1519,10 +1538,26 @@ function updateFolderPickerButtons() {
   const nativeBtn = document.getElementById('btn-add-photo-folder-native');
   const fallbackLabel = document.getElementById('btn-add-photo-folder-fallback');
   const galleryLabel = document.getElementById('btn-add-photo-gallery-ios');
+  const nativeLibraryPanel = document.getElementById('native-photo-library-panel');
+  const folderRow = document.getElementById('photo-folder-row');
   if (!nativeBtn || !fallbackLabel) return;
 
   const onAppleMobile = isAppleMobileDevice();
-  document.documentElement.classList.toggle('platform-ios', onAppleMobile);
+  const onCapacitorIOS = typeof MuralPlatform !== 'undefined' && MuralPlatform.isNativeIOS();
+  document.documentElement.classList.toggle('platform-ios', onAppleMobile || onCapacitorIOS);
+  document.documentElement.classList.toggle('platform-capacitor-ios', onCapacitorIOS);
+
+  if (onCapacitorIOS) {
+    nativeBtn.hidden = true;
+    fallbackLabel.hidden = true;
+    if (galleryLabel) galleryLabel.hidden = true;
+    if (folderRow) folderRow.hidden = true;
+    if (nativeLibraryPanel) nativeLibraryPanel.hidden = false;
+    return;
+  }
+
+  if (nativeLibraryPanel) nativeLibraryPanel.hidden = true;
+  if (folderRow) folderRow.hidden = false;
 
   if (onAppleMobile) {
     nativeBtn.hidden = true;
@@ -1787,6 +1822,9 @@ async function applySessionFolder(files, { name, gallerySource = false } = {}) {
 }
 
 async function getPhotoSourceCount() {
+  if (usesNativePhotoLibrary()) {
+    return PhotoLibraryService.getCount();
+  }
   if (usesFolderSource()) {
     await ensureFolderPlaylistForToday();
     return getVisibleFolderPlaylist().length;
@@ -1799,6 +1837,10 @@ async function hasPhotoSources() {
 }
 
 async function resolvePhotoAtIndex(index) {
+  if (usesNativePhotoLibrary()) {
+    PhotoLibraryService.setCurrentIndex(index);
+    return PhotoLibraryService.resolvePhotoAtIndex(index, 2048);
+  }
   if (usesFolderSource()) {
     const { src, total } = await readFolderImageAtIndex(index);
     return { src, total };
@@ -1819,7 +1861,17 @@ function scheduleMidnightFolderRescan() {
 
   midnightRescanTimer = setTimeout(() => {
     void (async () => {
-      if (usesFolderSource()) {
+      if (isNativePhotoLibraryMode()) {
+        try {
+          await PhotoLibraryService.scanLibrary({ reshuffle: true });
+          clockPhotoIndex = 0;
+          State.slideIndex = 0;
+          await refreshPhotoViews();
+          showToast('Biblioteca de fotos atualizada à meia-noite');
+        } catch (e) {
+          console.warn('midnight native library scan:', e);
+        }
+      } else if (usesFolderSource()) {
         await rescanLinkedFolders({ notify: true, resetIndex: true, interactive: false });
         if (photoPlaylistListVisible) void renderPhotoPlaylistList();
       }
@@ -1837,6 +1889,14 @@ function checkMidnightPlaylistRefresh() {
   if (today === lastMidnightCheckDate) return;
 
   lastMidnightCheckDate = today;
+  if (isNativePhotoLibraryMode() && PhotoLibraryService.needsDailyRefresh()) {
+    void PhotoLibraryService.scanLibrary({ reshuffle: true }).then(() => {
+      clockPhotoIndex = 0;
+      State.slideIndex = 0;
+      return refreshPhotoViews();
+    }).catch((e) => console.warn('daily native library refresh:', e));
+    return;
+  }
   if (usesFolderSource() && State.folderPlaylistDate !== today) {
     void ensureAllLinkedFolderPermissions({ interactive: false }).then((access) => {
       if (!access.ok) {
@@ -2196,9 +2256,15 @@ function tickClock() {
 
   // modo relógio
   const el = document.getElementById('clock-time');
-  if (el) el.textContent = timeStr;
+  if (el) {
+    el.textContent = timeStr;
+    el.dataset.text = timeStr;
+  }
   const elSec = document.getElementById('clock-seconds');
-  if (elSec) elSec.textContent = secStr;
+  if (elSec) {
+    elSec.textContent = secStr;
+    elSec.dataset.text = secStr;
+  }
   const elDate = document.getElementById('clock-date');
   if (elDate) elDate.textContent = dateStr;
 
@@ -2542,7 +2608,14 @@ async function navigateClockPhoto(delta, restartTimer = true) {
   const count = await getPhotoSourceCount();
   if (count <= 1) return;
 
-  clockPhotoIndex = (clockPhotoIndex + delta + count) % count;
+  if (usesNativePhotoLibrary()) {
+    const current = PhotoLibraryService.getCurrentIndex();
+    const next = (current + delta + count) % count;
+    PhotoLibraryService.setCurrentIndex(next);
+    clockPhotoIndex = next;
+  } else {
+    clockPhotoIndex = (clockPhotoIndex + delta + count) % count;
+  }
   await updateClockPhoto();
 
   if (restartTimer) {
@@ -2724,10 +2797,33 @@ function showSlideWithSrc(index, src, total) {
     slidePhotoObjectUrls[incomingKey] = null;
   }
 
+  const effect = typeof SlideshowService !== 'undefined'
+    ? SlideshowService.pickEffect(State.cfg.transition || 'fade')
+    : (State.cfg.transition || 'fade');
+
+  if (typeof SlideshowService !== 'undefined') {
+    SlideshowService.applyTransition({
+      container,
+      incoming,
+      outgoing,
+      src,
+      effectName: effect,
+      onComplete: () => {
+        State.slideActive = incomingKey;
+        if (counter) counter.textContent = `${index + 1} / ${total}`;
+      },
+    });
+    if (effect === 'none') {
+      State.slideActive = incomingKey;
+      if (counter) counter.textContent = `${index + 1} / ${total}`;
+    }
+    return;
+  }
+
   const EFFECTS = ['fade', 'slide', 'zoom', 'kenburns'];
-  let effect = State.cfg.transition || 'fade';
-  if (effect === 'random') effect = EFFECTS[Math.floor(Math.random() * EFFECTS.length)];
-  if (effect === 'none') {
+  let legacyEffect = State.cfg.transition || 'fade';
+  if (legacyEffect === 'random') legacyEffect = EFFECTS[Math.floor(Math.random() * EFFECTS.length)];
+  if (legacyEffect === 'none') {
     incoming.src = src;
     incoming.classList.add('active');
     outgoing.classList.remove('active');
@@ -2742,15 +2838,15 @@ function showSlideWithSrc(index, src, total) {
   incoming.src = src;
 
   requestAnimationFrame(() => {
-    container.classList.add(`fx-${effect}`);
+    container.classList.add(`fx-${legacyEffect}`);
     incoming.classList.add('active', 'slide-in');
     outgoing.classList.add('slide-out');
 
-    const duration = effect === 'kenburns' ? 1000 : 700;
+    const duration = legacyEffect === 'kenburns' ? 1000 : 700;
     setTimeout(() => {
       outgoing.classList.remove('active', 'slide-out');
       incoming.classList.remove('slide-in');
-      container.className = effect === 'kenburns' ? 'fx-kenburns' : '';
+      container.className = legacyEffect === 'kenburns' ? 'fx-kenburns' : '';
     }, duration);
   });
 
@@ -3528,6 +3624,20 @@ function bindEvents() {
     });
   });
 
+  document.getElementById('btn-refresh-photo-library')?.addEventListener('click', () => {
+    void refreshNativePhotoLibrary({ notify: true, reshuffle: true });
+  });
+
+  document.getElementById('btn-request-photo-permission')?.addEventListener('click', () => {
+    void PhotoLibraryService.ensurePermission(true).then((permission) => {
+      if (permission.granted) {
+        void refreshNativePhotoLibrary({ notify: true, reshuffle: true });
+      } else {
+        showToast('Permissão da biblioteca de fotos negada');
+      }
+    });
+  });
+
   document.getElementById('cfg-transition').addEventListener('change', e => {
     State.cfg.transition = e.target.value;
     saveConfig();
@@ -3577,6 +3687,73 @@ function bindEvents() {
   });
 }
 
+async function refreshNativePhotoLibrary({ notify = true, reshuffle = true } = {}) {
+  if (!isNativePhotoLibraryMode()) return 0;
+  try {
+    const result = await PhotoLibraryService.scanLibrary({ reshuffle });
+    clockPhotoIndex = 0;
+    State.slideIndex = 0;
+    renderNativePhotoLibraryInfo(result);
+    updatePhotoActionButtons();
+    await refreshPhotoViews();
+    if (notify) {
+      showToast(`Biblioteca atualizada — ${result.total} foto${result.total === 1 ? '' : 's'}`);
+    }
+    return result.total;
+  } catch (e) {
+    console.warn('refreshNativePhotoLibrary:', e);
+    if (notify) showToast('Não foi possível atualizar a biblioteca de fotos');
+    return 0;
+  }
+}
+
+function renderNativePhotoLibraryInfo(result) {
+  const info = document.getElementById('native-photo-library-info');
+  if (!info) return;
+  const total = result?.total ?? PhotoLibraryService.getCount();
+  const refresh = result?.lastLibraryRefresh
+    || PhotoLibraryService.getState().lastLibraryRefresh
+    || '—';
+  info.textContent = `${total} foto${total === 1 ? '' : 's'} na biblioteca · última atualização: ${refresh}`;
+}
+
+async function bootstrapNativePhotoLibrary() {
+  if (!isNativePhotoLibraryMode()) return;
+
+  await PhotoLibraryService.loadPersistedState();
+  renderNativePhotoLibraryInfo();
+  updateFolderPickerButtons();
+  updatePhotoActionButtons();
+
+  const hasPersistedPhotos = PhotoLibraryService.getCount() > 0;
+  if (hasPersistedPhotos) {
+    clockPhotoIndex = PhotoLibraryService.getCurrentIndex();
+    await refreshPhotoViews();
+  }
+
+  try {
+    const permission = await PhotoLibraryService.ensurePermission(!hasPersistedPhotos);
+    if (!permission.granted) {
+      showToast('Permita o acesso à biblioteca de fotos nas Configurações do iOS');
+      return;
+    }
+
+    if (!hasPersistedPhotos || PhotoLibraryService.needsDailyRefresh()) {
+      await refreshNativePhotoLibrary({
+        notify: !hasPersistedPhotos,
+        reshuffle: true,
+      });
+      return;
+    }
+
+    if (!hasPersistedPhotos) {
+      showToast('Nenhuma foto encontrada na biblioteca');
+    }
+  } catch (e) {
+    console.warn('bootstrapNativePhotoLibrary:', e);
+  }
+}
+
 // ─── BOOT ────────────────────────────────────
 async function init() {
   loadConfig();
@@ -3607,26 +3784,30 @@ async function init() {
   setInterval(tickClock, 1000);
 
   try {
-    await clearLegacyPhotoStorage();
-    if (isAppleMobileDevice()) {
-      await loadStoredGalleryFolders();
+    if (isNativePhotoLibraryMode()) {
+      await bootstrapNativePhotoLibrary();
     } else {
-      await loadStoredFolderHandles();
-    }
-    if (usesFolderSource()) {
-      await syncPersistedFolderPermissions();
-      const access = await ensureAllLinkedFolderPermissions({ interactive: false });
-      if (!access.ok) {
-        setupDeferredFolderPermissionGrant();
+      await clearLegacyPhotoStorage();
+      if (isAppleMobileDevice()) {
+        await loadStoredGalleryFolders();
+      } else {
+        await loadStoredFolderHandles();
       }
-      if (access.ok) {
-        await ensureFolderPlaylistForToday();
+      if (usesFolderSource()) {
+        await syncPersistedFolderPermissions();
+        const access = await ensureAllLinkedFolderPermissions({ interactive: false });
+        if (!access.ok) {
+          setupDeferredFolderPermissionGrant();
+        }
+        if (access.ok) {
+          await ensureFolderPlaylistForToday();
+        }
       }
+      updatePhotoActionButtons();
+      await refreshPhotoViews();
     }
-    updatePhotoActionButtons();
-    await refreshPhotoViews();
   } catch (e) {
-    console.warn('init folder photos:', e);
+    console.warn('init photos:', e);
     void updateFolderPermissionBanner();
   }
 
@@ -3646,7 +3827,7 @@ async function init() {
 }
 
 // ─── SERVICE WORKER ───────────────────────────
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && !(typeof MuralPlatform !== 'undefined' && MuralPlatform.isNativePlatform())) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register(new URL('sw.js', window.location.href))
       .then((registration) => {
