@@ -27,11 +27,11 @@
   --radius: 12px;
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
   --clock-font: 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', 'Avenir Next', -apple-system, BlinkMacSystemFont, sans-serif;
-  --clock-fill: rgba(255, 255, 255, 0.2);
-  --clock-stroke: rgba(255, 255, 255, 0.34);
-  --clock-glow: rgba(255, 255, 255, 0.07);
-  --clock-shadow: rgba(0, 0, 0, 0.14);
-  --clock-highlight: rgba(255, 255, 255, 0.22);
+  --clock-fill: rgba(255, 255, 255, 0.38);
+  --clock-stroke: rgba(255, 255, 255, 0.52);
+  --clock-glow: rgba(255, 255, 255, 0.1);
+  --clock-shadow: rgba(0, 0, 0, 0.18);
+  --clock-highlight: rgba(255, 255, 255, 0.34);
 }
 
 html, body {
@@ -67,6 +67,7 @@ html, body {
   overflow: hidden;
 }
 .mode.active { display: flex; }
+#mode-clock.mode.active { display: block; }
 
 /* =====================
    MODO: RELÓGIO
@@ -142,6 +143,22 @@ html, body {
   border-radius: 0;
   overflow: hidden;
   background: var(--bg);
+}
+
+#clock-photo-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 70% 40%, rgba(90, 140, 200, 0.35) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 50% at 20% 70%, rgba(60, 100, 160, 0.28) 0%, transparent 65%),
+    linear-gradient(145deg, #0a1e3d 0%, #1a3058 45%, #0c1f3a 100%);
+  transition: opacity 0.8s ease;
+}
+
+#clock-photo-frame.has-photo::before {
+  opacity: 0;
 }
 
 #clock-photo-img {
@@ -427,11 +444,13 @@ body.clock-nav-visible .clock-photo-nav:not(:disabled) .clock-photo-nav-icon,
   z-index: 1;
   display: block;
   color: var(--clock-fill);
-  -webkit-text-stroke: 0.45px var(--clock-stroke);
+  -webkit-text-stroke: 0.6px var(--clock-stroke);
   paint-order: stroke fill;
   text-shadow:
     0 -1px 0 var(--clock-highlight),
-    0 0 24px var(--clock-glow);
+    0 1px 2px var(--clock-shadow),
+    0 0 28px var(--clock-glow);
+  -webkit-font-smoothing: antialiased;
 }
 
 html[data-clock-tone="light"] {

@@ -2765,6 +2765,7 @@ function setupClockNavAutoReveal() {
 async function updateClockPhoto(skipAttempts = 0) {
   const img = document.getElementById('clock-photo-img');
   const empty = document.getElementById('clock-photo-empty');
+  const frame = document.getElementById('clock-photo-frame');
   if (!img) return;
 
   const count = await getPhotoSourceCount();
@@ -2772,6 +2773,7 @@ async function updateClockPhoto(skipAttempts = 0) {
     revokeClockPhotoObjectUrl();
     img.removeAttribute('src');
     img.style.opacity = '0';
+    frame?.classList.remove('has-photo');
     if (empty) empty.style.display = 'flex';
     hideClockPhotoMeta();
     setClockTone('neutral');
@@ -2783,6 +2785,7 @@ async function updateClockPhoto(skipAttempts = 0) {
     revokeClockPhotoObjectUrl();
     img.removeAttribute('src');
     img.style.opacity = '0';
+    frame?.classList.remove('has-photo');
     if (empty) empty.style.display = 'flex';
     hideClockPhotoMeta();
     setClockTone('neutral');
@@ -2808,6 +2811,7 @@ async function updateClockPhoto(skipAttempts = 0) {
   loader.onload = () => {
     img.src = src;
     img.style.opacity = '1';
+    frame?.classList.add('has-photo');
     if (empty) empty.style.display = 'none';
     updateClockToneFromImage(img);
     void updateClockPhotoMeta(currentIndex);
@@ -3923,12 +3927,21 @@ async function init() {
 // ─── SERVICE WORKER ───────────────────────────
 if ('serviceWorker' in navigator && !(typeof MuralPlatform !== 'undefined' && MuralPlatform.isNativePlatform())) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register(new URL('sw.js', window.location.href))
+    navigator.serviceWorker.register(new URL('sw.js?v=120', window.location.href))
       .then((registration) => {
         console.log('SW registrado');
         registration.update();
+        if (registration.waiting) {
+          registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
       })
       .catch((e) => console.warn('SW erro:', e));
+
+    if ('caches' in window) {
+      caches.keys().then((keys) => Promise.all(
+        keys.filter((key) => key !== 'smartdisplay-v120').map((key) => caches.delete(key))
+      )).catch((e) => console.warn('cache cleanup:', e));
+    }
   });
 }
 

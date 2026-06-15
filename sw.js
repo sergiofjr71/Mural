@@ -3,17 +3,11 @@
    Cache-first para HTML; CSS/JS direto no navegador
    ============================================ */
 
-const CACHE_NAME = 'smartdisplay-v112';
+const CACHE_NAME = 'smartdisplay-v120';
 
 const STATIC_ASSETS = [
-  './',
-  './index.html',
-  './css/style.css',
-  './fonts/Nunito-SemiBold.ttf',
-  './fonts/Nunito-Bold.ttf',
-  './js/heic2any.min.js',
-  './js/app.js',
   './manifest.json',
+  './js/heic2any.min.js',
 ];
 
 self.addEventListener('install', (event) => {
@@ -34,6 +28,12 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
@@ -52,6 +52,27 @@ self.addEventListener('fetch', (event) => {
     !event.request.url.includes(self.location.origin)
   ) {
     event.respondWith(fetch(event.request).catch(() => new Response('', { status: 503 })));
+    return;
+  }
+
+  // HTML: sempre buscar na rede primeiro (evita UI desatualizada)
+  if (
+    event.request.mode === 'navigate'
+    || event.request.destination === 'document'
+    || url.pathname.endsWith('.html')
+    || url.pathname.endsWith('/')
+  ) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
     return;
   }
 
