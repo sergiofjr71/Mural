@@ -2064,7 +2064,7 @@ async function showSlideAsync(index) {
   if (!total) return;
   const normalizedIndex = ((index % total) + total) % total;
   const { src } = await resolvePhotoAtIndex(normalizedIndex);
-  if (!src) return;
+  if (!isUsableImageSrc(src)) return;
   showSlideWithSrc(normalizedIndex, src, total);
 }
 
@@ -2695,16 +2695,6 @@ function bindEvents() {
 }
 
 // ─── BOOT ────────────────────────────────────
-function syncPhotoColHeight() {
-  const wrapper = document.querySelector('.clock-wrapper');
-  const col = document.getElementById('clock-photo-col');
-  if (!wrapper || !col) return;
-
-  const height = Math.max(200, Math.round(wrapper.getBoundingClientRect().height));
-  col.style.height = `${height}px`;
-  col.style.marginLeft = '0';
-}
-
 async function init() {
   loadConfig();
   loadFolderPlaylist();
@@ -2716,6 +2706,12 @@ async function init() {
   setupFolderPickerUi();
   updateCityNav();
   switchMode('clock');
+
+  const photoCol = document.getElementById('clock-photo-col');
+  if (photoCol) {
+    photoCol.style.height = '';
+    photoCol.style.marginLeft = '';
+  }
 
   tickClock();
   setInterval(tickClock, 1000);
@@ -2750,10 +2746,6 @@ async function init() {
   startWeatherTimer();
 
   if (State.cfg.wakelock) requestWakeLock();
-
-  syncPhotoColHeight();
-  setTimeout(syncPhotoColHeight, 800);
-  window.addEventListener('resize', syncPhotoColHeight);
 }
 
 // ─── SERVICE WORKER ───────────────────────────
