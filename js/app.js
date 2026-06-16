@@ -4,6 +4,13 @@
 
 'use strict';
 
+// ─── CAPACITOR ───────────────────────────────
+const isCapacitor = () => !!(window.Capacitor?.isNativePlatform?.());
+
+function capacitorPlugin(name) {
+  return window.Capacitor?.Plugins?.[name] || null;
+}
+
 // ─── ESTADO GLOBAL ───────────────────────────
 const State = {
   mode: 'clock',
@@ -59,6 +66,32 @@ const IMAGE_FILE_RE = /\.(jpe?g|png|gif|webp|bmp|avif|heic|heif)$/i;
 const PHOTO_DB_NAME = 'SmartDisplay';
 const PHOTO_DB_VERSION = 4;
 const GALLERY_FOLDERS_KEY = 'sd_gallery_folders';
+const PHOTO_SOURCE_PREF_KEY = 'sd_photo_source_pref'; // 'gallery' | 'album'
+const PHOTO_INDEX_KEY = 'sd_photo_index';
+// Cache de object URLs para fotos nativas — evita re-carregar a mesma foto
+const nativePhotoCache = new Map(); // identifier → object URL
+// Cache de metadados para fotos nativas
+const nativeMetaCache = new Map(); // identifier → { location, date, time }
+
+// Diagnóstico de fotos nativas — mostra toast na tela após 30 tentativas
+const _nativeDiagCounts = {};
+let _nativeDiagTotal = 0;
+let _nativeDiagShown = false;
+function _nativeDiag(status, identifier, detail) {
+  _nativeDiagCounts[status] = (_nativeDiagCounts[status] || 0) + 1;
+  _nativeDiagTotal++;
+  // Após 30 tentativas, mostra relatório na tela uma única vez
+  if (_nativeDiagTotal === 30 && !_nativeDiagShown) {
+    _nativeDiagShown = true;
+    const ok = _nativeDiagCounts['OK'] || 0;
+    const errs = Object.entries(_nativeDiagCounts)
+      .filter(([k]) => k !== 'OK')
+      .map(([k, v]) => `${k}:${v}`)
+      .join(' ');
+    showToast(`Diagnóstico fotos — OK:${ok} | ${errs || 'sem erros'}`, 8000);
+  }
+}
+
 let photoDbPromise = null;
 let clockPhotoObjectUrl = null;
 let slidePhotoObjectUrls = { a: null, b: null };
@@ -117,16 +150,6 @@ function generateFolderId() {
 
 function usesFolderSource() {
   return State.linkedFolders.length > 0;
-}
-
-function usesNativePhotoLibrary() {
-  return typeof PhotoLibraryService !== 'undefined'
-    && PhotoLibraryService.isEnabled()
-    && PhotoLibraryService.getCount() > 0;
-}
-
-function isNativePhotoLibraryMode() {
-  return typeof PhotoLibraryService !== 'undefined' && PhotoLibraryService.isEnabled();
 }
 
 function findLinkedFolderByName(name) {
@@ -216,8 +239,15 @@ function markFolderPermissionGranted(folderId) {
     const map = loadFolderPermissionsMap();
     map[folderId] = Date.now();
     localStorage.setItem(FOLDER_PERMISSIONS_KEY, JSON.stringify(map));
-    sessionStorage.setItem('sd_folder_perm_done', '1');
+    localStorage.setItem('sd_folder_perm_done', String(Date.now()));
   } catch {}
+}
+
+function isFolderPermDoneRecently() {
+  try {
+    const ts = Number(localStorage.getItem('sd_folder_perm_done') || '0');
+    return Date.now() - ts < 24 * 60 * 60 * 1000;
+  } catch { return false; }
 }
 
 function clearFolderPermissionGranted(folderId) {
@@ -288,7 +318,7 @@ async function syncPersistedFolderPermissions() {
 
 function setupDeferredFolderPermissionGrant() {
   if (folderPermissionPromptBound) return;
-  if (sessionStorage.getItem('sd_folder_perm_done') === '1') return;
+  if (isFolderPermDoneRecently()) return;
 
   folderPermissionPromptBound = true;
   const run = async () => {
@@ -300,7 +330,7 @@ function setupDeferredFolderPermissionGrant() {
 
     document.removeEventListener('pointerdown', run, true);
     const ok = await grantAllFolderAccess();
-    if (ok) sessionStorage.setItem('sd_folder_perm_done', '1');
+    if (ok) localStorage.setItem('sd_folder_perm_done', String(Date.now()));
   };
 
   document.addEventListener('pointerdown', run, true);
@@ -724,6 +754,44 @@ async function convertHeicToDisplayBlob(file, { thumbnail = false } = {}) {
 async function createDisplayObjectUrlFromFile(file, { thumbnail = false } = {}) {
   if (!file) return null;
 
+  // Galeria nativa Capacitor — URL já pronta, sem conversão
+  if (file._nativeUrl) return file._nativeUrl;
+
+  // Galeria nativa Capacitor — getMediaByIdentifier retorna path de arquivo
+  if (file._nativeIdentifier) {
+    const cached = nativePhotoCache.get(file._nativeIdentifier);
+    if (cached) return cached;
+    const Media = capacitorPlugin('Media');
+    if (!Media) { _nativeDiag('NO_PLUGIN', file._nativeIdentifier, null); return null; }
+    try {
+      const result = await Media.getMediaByIdentifier({ identifier: file._nativeIdentifier });
+      if (!result?.path) {
+        _nativeDiag('NO_PATH', file._nativeIdentifier, null);
+        console.warn('native: sem path para', file._nativeIdentifier);
+        return null;
+      }
+
+      // Normaliza path — convertFileSrc precisa de file:// no iOS
+      let nativePath = result.path;
+      if (!nativePath.startsWith('file://') && nativePath.startsWith('/')) {
+        nativePath = 'file://' + nativePath;
+      }
+      const webUrl = window.Capacitor?.convertFileSrc
+        ? window.Capacitor.convertFileSrc(nativePath)
+        : nativePath;
+
+      // Usa URL direta capacitor:// — WKWebView no iOS 15 não renderiza blob HEIC
+      // mas renderiza HEIC via Capacitor file server sem problemas
+      _nativeDiag('OK', file._nativeIdentifier, webUrl);
+      nativePhotoCache.set(file._nativeIdentifier, webUrl);
+      return webUrl;
+    } catch (e) {
+      _nativeDiag('IDENTIFIER_ERR', file._nativeIdentifier, String(e));
+      console.warn('createDisplayObjectUrlFromFile native:', e);
+      return null;
+    }
+  }
+
   if (isHeicFile(file)) {
     try {
       await loadHeic2anyLibrary();
@@ -799,7 +867,6 @@ async function reverseGeocodePhoto(lat, lon) {
     const res = await fetch(url, {
       headers: {
         'Accept-Language': 'pt-BR,pt',
-        'User-Agent': 'SmartDisplay-Mural/1.0 (photo metadata)',
       },
     });
     if (!res.ok) return null;
@@ -893,14 +960,8 @@ function isUsableImageSrc(src) {
   return typeof src === 'string'
     && src.length > 0
     && src !== 'undefined'
-    && (
-      src.startsWith('blob:')
-      || src.startsWith('data:image/')
-      || /^https?:/i.test(src)
-      || src.startsWith('file://')
-      || src.includes('_capacitor_file_')
-      || src.startsWith('capacitor://')
-    );
+    && (src.startsWith('blob:') || src.startsWith('data:image/')
+      || /^https?:/i.test(src) || src.startsWith('capacitor://'));
 }
 
 function revokePreviewObjectUrls() {
@@ -923,6 +984,20 @@ async function getFileForPlaylistPath(path) {
 
   const folder = State.linkedFolders.find((item) => item.id === parsed.folderId);
   if (!folder) return null;
+
+  // Galeria nativa Capacitor — lazy load via plugin (identifier PHAsset)
+  if (folder.nativeGallerySource) {
+    const item = folder.items?.find((i) => i.identifier === parsed.relPath);
+    if (!item?.identifier) return null;
+    return {
+      _nativeIdentifier: item.identifier,
+      _nativeLat: item.lat ?? null,
+      _nativeLon: item.lon ?? null,
+      _nativeDate: item.creationDate ?? null,
+      name: item.name || 'foto.jpg',
+      type: 'image/jpeg',
+    };
+  }
 
   if (folder.files?.length) {
     return folder.files.find((file) => {
@@ -995,6 +1070,26 @@ async function getFolderImageEntries(onProgress) {
   const errors = [];
 
   for (const folder of State.linkedFolders) {
+    // Galeria nativa Capacitor — apenas referências, sem copiar dados
+    if (folder.nativeGallerySource && folder.items?.length) {
+      for (const item of folder.items) {
+        entries.push({
+          path: `${folder.id}::${item.identifier}`,
+          getFile: async () => ({
+            _nativeIdentifier: item.identifier,
+            _nativeThumb: item.thumb ?? null,
+            _nativeLat: item.lat ?? null,
+            _nativeLon: item.lon ?? null,
+            _nativeDate: item.creationDate ?? null,
+            name: item.name || 'foto.jpg',
+            type: 'image/jpeg',
+          }),
+        });
+      }
+      if (onProgress) onProgress(entries.length);
+      continue;
+    }
+
     if (folder.handle) {
       if (!(await ensureFolderReadPermission(folder))) {
         errors.push(`Sem permissão para ler "${folder.name}".`);
@@ -1263,10 +1358,8 @@ async function rescanLinkedFolders({ notify = true, resetIndex = true, interacti
 
 function updatePhotoActionButtons() {
   const hasFolders = usesFolderSource();
-  const hasNativeLibrary = usesNativePhotoLibrary();
   const listBtn = document.getElementById('btn-show-photo-list');
   const rescanBtn = document.getElementById('btn-rescan-folders');
-  const refreshBtn = document.getElementById('btn-refresh-photo-library');
   if (listBtn) {
     listBtn.disabled = !hasFolders;
     if (!hasFolders) {
@@ -1274,8 +1367,7 @@ function updatePhotoActionButtons() {
       listBtn.classList.remove('is-active');
     }
   }
-  if (rescanBtn) rescanBtn.disabled = !hasFolders || isNativePhotoLibraryMode();
-  if (refreshBtn) refreshBtn.disabled = !isNativePhotoLibraryMode();
+  if (rescanBtn) rescanBtn.disabled = !hasFolders;
 }
 
 function formatPlaylistPath(path) {
@@ -1539,26 +1631,10 @@ function updateFolderPickerButtons() {
   const nativeBtn = document.getElementById('btn-add-photo-folder-native');
   const fallbackLabel = document.getElementById('btn-add-photo-folder-fallback');
   const galleryLabel = document.getElementById('btn-add-photo-gallery-ios');
-  const nativeLibraryPanel = document.getElementById('native-photo-library-panel');
-  const folderRow = document.getElementById('photo-folder-row');
   if (!nativeBtn || !fallbackLabel) return;
 
   const onAppleMobile = isAppleMobileDevice();
-  const onCapacitorIOS = typeof MuralPlatform !== 'undefined' && MuralPlatform.isNativeIOS();
-  document.documentElement.classList.toggle('platform-ios', onAppleMobile || onCapacitorIOS);
-  document.documentElement.classList.toggle('platform-capacitor-ios', onCapacitorIOS);
-
-  if (onCapacitorIOS) {
-    nativeBtn.hidden = true;
-    fallbackLabel.hidden = true;
-    if (galleryLabel) galleryLabel.hidden = true;
-    if (folderRow) folderRow.hidden = true;
-    if (nativeLibraryPanel) nativeLibraryPanel.hidden = false;
-    return;
-  }
-
-  if (nativeLibraryPanel) nativeLibraryPanel.hidden = true;
-  if (folderRow) folderRow.hidden = false;
+  document.documentElement.classList.toggle('platform-ios', onAppleMobile);
 
   if (onAppleMobile) {
     nativeBtn.hidden = true;
@@ -1578,13 +1654,153 @@ function updateFolderPickerButtons() {
   fallbackLabel.hidden = useNative;
 }
 
-function openGalleryPicker() {
+function getPhotoSourcePref() {
+  return localStorage.getItem(PHOTO_SOURCE_PREF_KEY) || null;
+}
+
+function setPhotoSourcePref(pref) {
+  localStorage.setItem(PHOTO_SOURCE_PREF_KEY, pref);
+}
+
+function clearPhotoSourcePref() {
+  localStorage.removeItem(PHOTO_SOURCE_PREF_KEY);
+}
+
+function openGalleryPickerDirect() {
   const input = getGalleryPickerInput();
-  if (!input) {
-    showToast('Seletor de fotos indisponível neste dispositivo');
+  if (!input) { showToast('Seletor de fotos indisponível neste dispositivo'); return; }
+  input.click();
+}
+
+function openGalleryPicker() {
+  const pref = getPhotoSourcePref();
+  if (pref === 'gallery' && isCapacitor()) {
+    void loadFullGalleryNative();
     return;
   }
-  input.click();
+  if (pref) {
+    openGalleryPickerDirect();
+    return;
+  }
+  showPhotoSourceModal();
+}
+
+const NATIVE_GALLERY_KEY = 'sd_native_gallery';
+
+function saveNativeGalleryIdentifiers(id, items) {
+  try {
+    localStorage.setItem(NATIVE_GALLERY_KEY, JSON.stringify({ id, items }));
+  } catch(e) { console.warn('saveNativeGalleryIdentifiers:', e); }
+}
+
+function loadNativeGalleryIdentifiers() {
+  try {
+    return JSON.parse(localStorage.getItem(NATIVE_GALLERY_KEY) || 'null');
+  } catch { return null; }
+}
+
+function initNativeGalleryFolder() {
+  const saved = loadNativeGalleryIdentifiers();
+  if (!saved?.id || !saved?.items?.length) return false;
+  if (State.linkedFolders.some((f) => f.id === saved.id)) return true;
+  State.linkedFolders.push({
+    id: saved.id,
+    name: 'Galeria completa',
+    nativeGallerySource: true,
+    items: saved.items,
+  });
+  return true;
+}
+
+async function loadFullGalleryNative() {
+  const Media = capacitorPlugin('Media');
+  if (!Media) {
+    showToast('Plugin de mídia indisponível');
+    openGalleryPickerDirect();
+    return;
+  }
+
+  showToast('Indexando galeria...');
+  try {
+    // quantity alto para buscar todas as fotos (default do plugin é 25)
+    // thumbnailQuality: 0 = sem geração de thumbnail — evita truncar a lista por memória
+    const { medias } = await Media.getMedias({ types: 'photos', quantity: 99999, thumbnailQuality: 0 });
+    if (!medias?.length) { showToast('Nenhuma foto encontrada na galeria'); return; }
+
+    const items = medias
+      .filter((m) => m.identifier)
+      .map((m) => ({
+        identifier: m.identifier,
+        name: m.name || `foto_${m.identifier.replace(/[^a-z0-9]/gi, '_')}`,
+        creationDate: m.creationDate || null,
+        lat: Number.isFinite(m.location?.latitude) ? m.location.latitude : null,
+        lon: Number.isFinite(m.location?.longitude) ? m.location.longitude : null,
+      }));
+
+    // Fonte única: remove qualquer galeria nativa anterior
+    State.linkedFolders = State.linkedFolders.filter((f) => !f.nativeGallerySource);
+    nativePhotoCache.clear();
+    nativeMetaCache.clear();
+
+    const folderId = crypto.randomUUID();
+    saveNativeGalleryIdentifiers(folderId, items);
+    State.linkedFolders.push({
+      id: folderId,
+      name: 'Galeria completa',
+      nativeGallerySource: true,
+      items,
+    });
+
+    await afterFolderAdded({ notify: false });
+    showToast(`${items.length} fotos indexadas — pronto!`);
+  } catch (e) {
+    console.warn('loadFullGalleryNative:', e);
+    showToast('Erro ao acessar galeria');
+  }
+}
+
+function showPhotoSourceModal() {
+  const overlay = document.getElementById('photo-source-overlay');
+  if (overlay) overlay.classList.remove('hidden');
+}
+
+function hidePhotoSourceModal() {
+  const overlay = document.getElementById('photo-source-overlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+
+function setupPhotoSourceModal() {
+  document.getElementById('btn-photo-source-gallery')?.addEventListener('click', () => {
+    setPhotoSourcePref('gallery');
+    hidePhotoSourceModal();
+    if (isCapacitor()) {
+      void loadFullGalleryNative();
+    } else {
+      openGalleryPickerDirect();
+    }
+  });
+
+  document.getElementById('btn-photo-source-album')?.addEventListener('click', () => {
+    setPhotoSourcePref('album');
+    hidePhotoSourceModal();
+    openGalleryPickerDirect();
+  });
+
+  document.getElementById('btn-photo-source-cancel')?.addEventListener('click', hidePhotoSourceModal);
+
+  document.getElementById('photo-source-overlay')?.addEventListener('click', (e) => {
+    if (e.target === document.getElementById('photo-source-overlay')) hidePhotoSourceModal();
+  });
+
+  const changeBtn = document.getElementById('btn-change-photo-source');
+  if (changeBtn) {
+    if (isAppleMobileDevice()) changeBtn.style.display = '';
+    changeBtn.addEventListener('click', () => {
+      clearPhotoSourcePref();
+      hidePhotoSourceModal();
+      showPhotoSourceModal();
+    });
+  }
 }
 
 function openFolderPickerFallback() {
@@ -1823,9 +2039,6 @@ async function applySessionFolder(files, { name, gallerySource = false } = {}) {
 }
 
 async function getPhotoSourceCount() {
-  if (isNativePhotoLibraryMode()) {
-    return PhotoLibraryService.getCount();
-  }
   if (usesFolderSource()) {
     await ensureFolderPlaylistForToday();
     return getVisibleFolderPlaylist().length;
@@ -1838,10 +2051,6 @@ async function hasPhotoSources() {
 }
 
 async function resolvePhotoAtIndex(index) {
-  if (isNativePhotoLibraryMode() && PhotoLibraryService.getCount() > 0) {
-    PhotoLibraryService.setCurrentIndex(index);
-    return PhotoLibraryService.resolvePhotoAtIndex(index, 2048);
-  }
   if (usesFolderSource()) {
     const { src, total } = await readFolderImageAtIndex(index);
     return { src, total };
@@ -1862,17 +2071,7 @@ function scheduleMidnightFolderRescan() {
 
   midnightRescanTimer = setTimeout(() => {
     void (async () => {
-      if (isNativePhotoLibraryMode()) {
-        try {
-          await PhotoLibraryService.scanLibrary({ reshuffle: true });
-          clockPhotoIndex = 0;
-          State.slideIndex = 0;
-          await refreshPhotoViews();
-          showToast('Biblioteca de fotos atualizada à meia-noite');
-        } catch (e) {
-          console.warn('midnight native library scan:', e);
-        }
-      } else if (usesFolderSource()) {
+      if (usesFolderSource()) {
         await rescanLinkedFolders({ notify: true, resetIndex: true, interactive: false });
         if (photoPlaylistListVisible) void renderPhotoPlaylistList();
       }
@@ -1890,14 +2089,6 @@ function checkMidnightPlaylistRefresh() {
   if (today === lastMidnightCheckDate) return;
 
   lastMidnightCheckDate = today;
-  if (isNativePhotoLibraryMode() && PhotoLibraryService.needsDailyRefresh()) {
-    void PhotoLibraryService.scanLibrary({ reshuffle: true }).then(() => {
-      clockPhotoIndex = 0;
-      State.slideIndex = 0;
-      return refreshPhotoViews();
-    }).catch((e) => console.warn('daily native library refresh:', e));
-    return;
-  }
   if (usesFolderSource() && State.folderPlaylistDate !== today) {
     void ensureAllLinkedFolderPermissions({ interactive: false }).then((access) => {
       if (!access.ok) {
@@ -2019,6 +2210,22 @@ async function clearLegacyPhotoStorage() {
   try {
     await openPhotoDB();
   } catch {}
+}
+
+async function clearOldGalleryData() {
+  // No Capacitor, remove dados de galeria do IndexedDB (gravados via web file picker)
+  // para evitar que conflitem com a galeria nativa.
+  try {
+    const meta = JSON.parse(localStorage.getItem(GALLERY_FOLDERS_KEY) || '[]');
+    for (const entry of meta) {
+      if (entry?.id) await deleteGalleryFolderFromIdb(entry.id);
+    }
+    localStorage.removeItem(GALLERY_FOLDERS_KEY);
+    // Remove folders com gallerySource=true (web picker) do estado em memória
+    State.linkedFolders = State.linkedFolders.filter((f) => !f.gallerySource);
+  } catch (e) {
+    console.warn('clearOldGalleryData:', e);
+  }
 }
 
 function addPhotoLink(name, url) {
@@ -2143,6 +2350,59 @@ async function extractPhotoMetadata(file) {
 
   const meta = { location: null, date: null, time: null };
 
+  // Fotos da galeria nativa iOS
+  if (file._nativeIdentifier) {
+    // Retorna do cache se já processado
+    if (nativeMetaCache.has(file._nativeIdentifier)) {
+      return nativeMetaCache.get(file._nativeIdentifier);
+    }
+
+    // 1ª opção: metadados retornados pelo plugin em getMedias()
+    if (file._nativeDate) {
+      const dt = new Date(file._nativeDate);
+      if (!Number.isNaN(dt.getTime())) {
+        meta.date = formatPhotoDate(dt);
+        meta.time = formatPhotoTime(dt);
+      }
+    }
+    if (Number.isFinite(file._nativeLat) && Number.isFinite(file._nativeLon)) {
+      meta.location = (await reverseGeocodePhoto(file._nativeLat, file._nativeLon))
+        || `${file._nativeLat.toFixed(4)}, ${file._nativeLon.toFixed(4)}`;
+    }
+
+    // 2ª opção: lê EXIF do blob já em cache (carregado para exibição)
+    if (!meta.date || !meta.location) {
+      const objUrl = nativePhotoCache.get(file._nativeIdentifier);
+      if (objUrl) {
+        try {
+          await loadExifrLibrary();
+          if (exifrAvailable()) {
+            const resp = await fetch(objUrl);
+            const blob = await resp.blob();
+            const parsed = await exifr.parse(blob, {
+              gps: true, tiff: true, exif: true, ifd0: true, iptc: true, mergeOutput: true,
+            });
+            if (!meta.date) {
+              const dt = parsed?.DateTimeOriginal || parsed?.CreateDate || parsed?.ModifyDate;
+              if (dt instanceof Date && !Number.isNaN(dt.getTime())) {
+                meta.date = formatPhotoDate(dt);
+                meta.time = formatPhotoTime(dt);
+              }
+            }
+            if (!meta.location) {
+              meta.location = await resolvePhotoLocation(blob, parsed);
+            }
+          }
+        } catch (e) {
+          console.warn('extractPhotoMetadata native EXIF:', e);
+        }
+      }
+    }
+
+    nativeMetaCache.set(file._nativeIdentifier, meta);
+    return meta;
+  }
+
   try {
     await loadExifrLibrary();
     if (exifrAvailable()) {
@@ -2229,6 +2489,7 @@ async function updateClockPhotoMeta(photoIndex) {
   const locValue = document.getElementById('clock-photo-meta-location-value');
   const dateLine = document.getElementById('clock-photo-meta-date');
   const timeLine = document.getElementById('clock-photo-meta-time');
+  const indexLine = document.getElementById('clock-photo-meta-index');
 
   overlay.classList.remove('hidden');
   if (locLine) {
@@ -2240,111 +2501,20 @@ async function updateClockPhotoMeta(photoIndex) {
     dateLine.hidden = false;
   }
   if (timeLine) {
-    timeLine.textContent = meta?.time || PHOTO_META_UNKNOWN;
+    const timeVal = document.getElementById('clock-photo-meta-time-value');
+    if (timeVal) timeVal.textContent = meta?.time || PHOTO_META_UNKNOWN;
+    else timeLine.textContent = meta?.time || PHOTO_META_UNKNOWN;
     timeLine.hidden = false;
+  }
+  if (indexLine) {
+    const total = await getPhotoSourceCount();
+    indexLine.textContent = total > 0 ? `${photoIndex + 1} / ${total}` : '';
+    indexLine.hidden = total <= 0;
   }
 
   requestAnimationFrame(() => {
     requestAnimationFrame(syncClockPhotoMetaLayout);
   });
-}
-
-function updateClockGlassElement(el, text) {
-  if (!el) return;
-  el.dataset.text = text;
-  const layers = el.querySelectorAll('.clock-glass-shadow, .clock-glass-face');
-  if (layers.length) {
-    layers.forEach((node) => {
-      node.textContent = text;
-    });
-    return;
-  }
-  el.textContent = text;
-}
-
-let clockToneCanvas = null;
-let clockToneCtx = null;
-let lastClockTone = '';
-
-function ensureClockToneCanvas() {
-  if (!clockToneCanvas) {
-    clockToneCanvas = document.createElement('canvas');
-    clockToneCtx = clockToneCanvas.getContext('2d', { willReadFrequently: true });
-  }
-  return clockToneCtx;
-}
-
-function setClockTone(tone) {
-  const next = tone === 'light' || tone === 'dark' ? tone : 'neutral';
-  if (lastClockTone === next) return;
-  lastClockTone = next;
-  if (next === 'neutral') {
-    document.documentElement.removeAttribute('data-clock-tone');
-    return;
-  }
-  document.documentElement.dataset.clockTone = next;
-}
-
-function sampleClockRegionLuminance(image, region) {
-  const ctx = ensureClockToneCanvas();
-  if (!ctx || !image?.naturalWidth || !image?.naturalHeight) return null;
-
-  const sampleW = 48;
-  const sampleH = 32;
-  clockToneCanvas.width = sampleW;
-  clockToneCanvas.height = sampleH;
-
-  const sx = Math.max(0, Math.round(region.x * image.naturalWidth));
-  const sy = Math.max(0, Math.round(region.y * image.naturalHeight));
-  const sw = Math.max(1, Math.round(region.w * image.naturalWidth));
-  const sh = Math.max(1, Math.round(region.h * image.naturalHeight));
-
-  ctx.drawImage(image, sx, sy, sw, sh, 0, 0, sampleW, sampleH);
-  const { data } = ctx.getImageData(0, 0, sampleW, sampleH);
-
-  let total = 0;
-  const pixels = data.length / 4;
-  for (let i = 0; i < data.length; i += 4) {
-    total += (0.2126 * data[i]) + (0.7152 * data[i + 1]) + (0.0722 * data[i + 2]);
-  }
-  return total / pixels;
-}
-
-function updateClockToneFromImage(img) {
-  if (!img?.complete || !img.naturalWidth) {
-    setClockTone('neutral');
-    return;
-  }
-
-  const clockEl = document.getElementById('clock-time');
-  const mode = document.getElementById('mode-clock');
-  if (!clockEl || !mode) {
-    setClockTone('neutral');
-    return;
-  }
-
-  const modeRect = mode.getBoundingClientRect();
-  const clockRect = clockEl.getBoundingClientRect();
-  if (!modeRect.width || !modeRect.height || !clockRect.width) {
-    setClockTone('neutral');
-    return;
-  }
-
-  const luminance = sampleClockRegionLuminance(img, {
-    x: (clockRect.left - modeRect.left) / modeRect.width,
-    y: (clockRect.top - modeRect.top) / modeRect.height,
-    w: clockRect.width / modeRect.width,
-    h: clockRect.height / modeRect.height,
-  });
-
-  if (luminance == null) {
-    setClockTone('neutral');
-    return;
-  }
-
-  if (luminance >= 168) setClockTone('light');
-  else if (luminance <= 92) setClockTone('dark');
-  else setClockTone('neutral');
 }
 
 function tickClock() {
@@ -2354,8 +2524,10 @@ function tickClock() {
   const secStr = pad(now.getSeconds());
 
   // modo relógio
-  updateClockGlassElement(document.getElementById('clock-time'), timeStr);
-  updateClockGlassElement(document.getElementById('clock-seconds'), secStr);
+  const el = document.getElementById('clock-time');
+  if (el) el.textContent = timeStr;
+  const elSec = document.getElementById('clock-seconds');
+  if (elSec) elSec.textContent = secStr;
   const elDate = document.getElementById('clock-date');
   if (elDate) elDate.textContent = dateStr;
 
@@ -2681,8 +2853,16 @@ function startWeatherTimer() {
 }
 
 // ─── MINI FOTO (painel direito do relógio) ───
-let clockPhotoIndex = 0;
+let clockPhotoIndex = (() => {
+  try { return parseInt(localStorage.getItem(PHOTO_INDEX_KEY) || '0', 10) || 0; } catch { return 0; }
+})();
 let clockPhotoTimer = null;
+
+function savePhotoIndex(index) {
+  try { localStorage.setItem(PHOTO_INDEX_KEY, String(index)); } catch {}
+}
+
+let clockPhotoNavBusy = false;
 
 async function startClockPhoto() {
   clearInterval(clockPhotoTimer);
@@ -2690,27 +2870,29 @@ async function startClockPhoto() {
   const count = await getPhotoSourceCount();
   if (count > 1) {
     clockPhotoTimer = setInterval(() => {
+      // Ignora disparo se navegação anterior ainda em curso
+      if (clockPhotoNavBusy) return;
       void navigateClockPhoto(1, false);
     }, State.cfg.interval);
   }
 }
 
 async function navigateClockPhoto(delta, restartTimer = true) {
-  const count = await getPhotoSourceCount();
-  if (count <= 1) return;
+  if (clockPhotoNavBusy) return;
+  clockPhotoNavBusy = true;
+  try {
+    const count = await getPhotoSourceCount();
+    if (count <= 1) return;
 
-  if (usesNativePhotoLibrary()) {
-    const current = PhotoLibraryService.getCurrentIndex();
-    const next = (current + delta + count) % count;
-    PhotoLibraryService.setCurrentIndex(next);
-    clockPhotoIndex = next;
-  } else {
     clockPhotoIndex = (clockPhotoIndex + delta + count) % count;
-  }
-  await updateClockPhoto();
+    savePhotoIndex(clockPhotoIndex);
+    await updateClockPhoto();
 
-  if (restartTimer) {
-    await startClockPhoto();
+    if (restartTimer) {
+      await startClockPhoto();
+    }
+  } finally {
+    clockPhotoNavBusy = false;
   }
 }
 
@@ -2763,10 +2945,9 @@ function setupClockNavAutoReveal() {
   clockMode.addEventListener('touchstart', showClockNavArrows, { passive: true });
 }
 
-async function updateClockPhoto(skipAttempts = 0) {
+async function updateClockPhoto() {
   const img = document.getElementById('clock-photo-img');
   const empty = document.getElementById('clock-photo-empty');
-  const frame = document.getElementById('clock-photo-frame');
   if (!img) return;
 
   const count = await getPhotoSourceCount();
@@ -2774,39 +2955,40 @@ async function updateClockPhoto(skipAttempts = 0) {
     revokeClockPhotoObjectUrl();
     img.removeAttribute('src');
     img.style.opacity = '0';
-    frame?.classList.remove('has-photo');
     if (empty) empty.style.display = 'flex';
     hideClockPhotoMeta();
-    setClockTone('neutral');
-    await updateClockPhotoNav();
-    return;
-  }
-
-  if (skipAttempts >= count) {
-    revokeClockPhotoObjectUrl();
-    img.removeAttribute('src');
-    img.style.opacity = '0';
-    frame?.classList.remove('has-photo');
-    if (empty) empty.style.display = 'flex';
-    hideClockPhotoMeta();
-    setClockTone('neutral');
     await updateClockPhotoNav();
     return;
   }
 
   if (clockPhotoIndex >= count) clockPhotoIndex = 0;
-  const currentIndex = clockPhotoIndex % count;
-  let src;
-  try {
-    ({ src } = await resolvePhotoAtIndex(currentIndex));
-  } catch (e) {
-    console.warn('resolvePhotoAtIndex:', e);
-    clockPhotoIndex = (clockPhotoIndex + 1) % count;
-    return updateClockPhoto(skipAttempts + 1);
+
+  // Loop iterativo: tenta até 50 fotos antes de exibir tela vazia
+  const maxSkip = Math.min(50, count);
+  let src = null;
+  let resolvedIndex = clockPhotoIndex;
+  for (let attempt = 0; attempt < maxSkip; attempt++) {
+    const idx = (clockPhotoIndex + attempt) % count;
+    const result = await resolvePhotoAtIndex(idx);
+    if (isUsableImageSrc(result.src)) {
+      src = result.src;
+      resolvedIndex = idx;
+      if (attempt > 0) {
+        clockPhotoIndex = resolvedIndex;
+        savePhotoIndex(clockPhotoIndex);
+      }
+      break;
+    }
   }
-  if (!isUsableImageSrc(src)) {
-    clockPhotoIndex = (clockPhotoIndex + 1) % count;
-    return updateClockPhoto(skipAttempts + 1);
+
+  if (!src) {
+    revokeClockPhotoObjectUrl();
+    img.removeAttribute('src');
+    img.style.opacity = '0';
+    if (empty) empty.style.display = 'flex';
+    hideClockPhotoMeta();
+    await updateClockPhotoNav();
+    return;
   }
 
   revokeClockPhotoObjectUrl();
@@ -2816,23 +2998,23 @@ async function updateClockPhoto(skipAttempts = 0) {
 
   img.style.opacity = '0';
   const loader = new Image();
+  const capturedIndex = resolvedIndex;
   loader.onload = () => {
     img.src = src;
     img.style.opacity = '1';
-    frame?.classList.add('has-photo');
     if (empty) empty.style.display = 'none';
-    updateClockToneFromImage(img);
-    void updateClockPhotoMeta(currentIndex);
+    savePhotoIndex(capturedIndex);
+    void updateClockPhotoMeta(capturedIndex);
   };
   loader.onerror = () => {
-    console.warn('clock photo failed to load');
+    // src foi resolvido mas img não renderizou (ex: HEIC inválido) — avança 1
+    console.warn('clock photo img render failed, advancing');
     revokeClockPhotoObjectUrl();
     img.removeAttribute('src');
     img.style.opacity = '0';
     hideClockPhotoMeta();
-    setClockTone('neutral');
-    clockPhotoIndex = (clockPhotoIndex + 1) % count;
-    void updateClockPhoto(skipAttempts + 1);
+    clockPhotoIndex = (capturedIndex + 1) % count;
+    savePhotoIndex(clockPhotoIndex);
   };
   loader.src = src;
   await updateClockPhotoNav();
@@ -2903,33 +3085,10 @@ function showSlideWithSrc(index, src, total) {
     slidePhotoObjectUrls[incomingKey] = null;
   }
 
-  const effect = typeof SlideshowService !== 'undefined'
-    ? SlideshowService.pickEffect(State.cfg.transition || 'fade')
-    : (State.cfg.transition || 'fade');
-
-  if (typeof SlideshowService !== 'undefined') {
-    SlideshowService.applyTransition({
-      container,
-      incoming,
-      outgoing,
-      src,
-      effectName: effect,
-      onComplete: () => {
-        State.slideActive = incomingKey;
-        if (counter) counter.textContent = `${index + 1} / ${total}`;
-      },
-    });
-    if (effect === 'none') {
-      State.slideActive = incomingKey;
-      if (counter) counter.textContent = `${index + 1} / ${total}`;
-    }
-    return;
-  }
-
   const EFFECTS = ['fade', 'slide', 'zoom', 'kenburns'];
-  let legacyEffect = State.cfg.transition || 'fade';
-  if (legacyEffect === 'random') legacyEffect = EFFECTS[Math.floor(Math.random() * EFFECTS.length)];
-  if (legacyEffect === 'none') {
+  let effect = State.cfg.transition || 'fade';
+  if (effect === 'random') effect = EFFECTS[Math.floor(Math.random() * EFFECTS.length)];
+  if (effect === 'none') {
     incoming.src = src;
     incoming.classList.add('active');
     outgoing.classList.remove('active');
@@ -2944,15 +3103,15 @@ function showSlideWithSrc(index, src, total) {
   incoming.src = src;
 
   requestAnimationFrame(() => {
-    container.classList.add(`fx-${legacyEffect}`);
+    container.classList.add(`fx-${effect}`);
     incoming.classList.add('active', 'slide-in');
     outgoing.classList.add('slide-out');
 
-    const duration = legacyEffect === 'kenburns' ? 1000 : 700;
+    const duration = effect === 'kenburns' ? 1000 : 700;
     setTimeout(() => {
       outgoing.classList.remove('active', 'slide-out');
       incoming.classList.remove('slide-in');
-      container.className = legacyEffect === 'kenburns' ? 'fx-kenburns' : '';
+      container.className = effect === 'kenburns' ? 'fx-kenburns' : '';
     }, duration);
   });
 
@@ -3168,11 +3327,15 @@ function saveDisplayConfig() {
 
 // ─── WAKELOCK ────────────────────────────────
 async function requestWakeLock() {
+  const keepAwake = capacitorPlugin('KeepAwake');
+  if (keepAwake) {
+    try { await keepAwake.keepAwake(); } catch(e) { console.warn('KeepAwake:', e); }
+    return;
+  }
   if (!('wakeLock' in navigator)) return;
   try {
     State.wakeLock = await navigator.wakeLock.request('screen');
     State.wakeLock.addEventListener('release', () => {
-      // re-solicita quando fica ativo de novo
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && State.cfg.wakelock) requestWakeLock();
       }, { once: true });
@@ -3181,6 +3344,11 @@ async function requestWakeLock() {
 }
 
 async function releaseWakeLock() {
+  const keepAwake = capacitorPlugin('KeepAwake');
+  if (keepAwake) {
+    try { await keepAwake.allowSleep(); } catch(e) { console.warn('allowSleep:', e); }
+    return;
+  }
   if (State.wakeLock) { await State.wakeLock.release(); State.wakeLock = null; }
 }
 
@@ -3212,6 +3380,8 @@ function supportsNativeFullscreen() {
 }
 
 function shouldUseNativeFullscreen() {
+  // No Capacitor no iPad usamos pseudo-fullscreen + StatusBar hide em vez do fullscreen nativo
+  if (isCapacitor()) return false;
   // iPadOS Safari shows a mandatory system "X" exit control in native fullscreen.
   return !isAppleMobileDevice();
 }
@@ -3694,6 +3864,8 @@ async function searchCities(query) {
 
 // ─── LISTENERS ───────────────────────────────
 function bindEvents() {
+  setupPhotoSourceModal();
+
   // settings
   document.getElementById('btn-settings-fab')?.addEventListener('click', openSettings);
   document.getElementById('clock-photo-empty')?.addEventListener('click', openSettings);
@@ -3725,23 +3897,16 @@ function bindEvents() {
   });
 
   document.getElementById('btn-rescan-folders')?.addEventListener('click', () => {
-    void rescanLinkedFolders({ notify: true, resetIndex: true, interactive: false }).then(() => {
-      if (photoPlaylistListVisible) void renderPhotoPlaylistList();
-    });
-  });
-
-  document.getElementById('btn-refresh-photo-library')?.addEventListener('click', () => {
-    void refreshNativePhotoLibrary({ notify: true, reshuffle: true });
-  });
-
-  document.getElementById('btn-request-photo-permission')?.addEventListener('click', () => {
-    void PhotoLibraryService.ensurePermission(true).then((permission) => {
-      if (permission.granted) {
-        void refreshNativePhotoLibrary({ notify: true, reshuffle: true });
-      } else {
-        showToast('Permissão da biblioteca de fotos negada');
-      }
-    });
+    if (isCapacitor()) {
+      // No Capacitor, re-indexa a galeria do zero (limpa cache e lista)
+      void loadFullGalleryNative().then(() => {
+        if (photoPlaylistListVisible) void renderPhotoPlaylistList();
+      });
+    } else {
+      void rescanLinkedFolders({ notify: true, resetIndex: true, interactive: false }).then(() => {
+        if (photoPlaylistListVisible) void renderPhotoPlaylistList();
+      });
+    }
   });
 
   document.getElementById('cfg-transition').addEventListener('change', e => {
@@ -3767,7 +3932,7 @@ function bindEvents() {
   document.getElementById('btn-close-cam').addEventListener('click', closeCamExpanded);
 
   // tela cheia
-  document.getElementById('btn-fullscreen').addEventListener('click', toggleFullscreen);
+  document.getElementById('btn-fullscreen')?.addEventListener('click', toggleFullscreen);
   document.getElementById('btn-fullscreen-fab')?.addEventListener('click', toggleFullscreen);
   document.addEventListener('fullscreenchange', updateFullscreenFab);
   document.addEventListener('webkitfullscreenchange', updateFullscreenFab);
@@ -3793,180 +3958,36 @@ function bindEvents() {
   });
 }
 
-async function refreshNativePhotoLibrary({ notify = true, reshuffle = true } = {}) {
-  if (!isNativePhotoLibraryMode()) return 0;
-  try {
-    const result = await PhotoLibraryService.scanLibrary({ reshuffle });
-    clockPhotoIndex = 0;
-    State.slideIndex = 0;
-    renderNativePhotoLibraryInfo(result);
-    updatePhotoActionButtons();
-    await refreshPhotoViews();
-    if (notify) {
-      showToast(`Biblioteca atualizada — ${result.total} foto${result.total === 1 ? '' : 's'}`);
-    }
-    return result.total;
-  } catch (e) {
-    console.warn('refreshNativePhotoLibrary:', e);
-    if (notify) showToast('Não foi possível atualizar a biblioteca de fotos');
-    return 0;
-  }
-}
-
-function renderNativePhotoLibraryInfo(result) {
-  const info = document.getElementById('native-photo-library-info');
-  if (!info) return;
-  const total = result?.total ?? PhotoLibraryService.getCount();
-  const refresh = result?.lastLibraryRefresh
-    || PhotoLibraryService.getState().lastLibraryRefresh
-    || '—';
-  info.textContent = `${total} foto${total === 1 ? '' : 's'} na biblioteca · última atualização: ${refresh}`;
-}
-
-async function bootstrapNativePhotoLibrary() {
-  if (!isNativePhotoLibraryMode()) return;
-
-  await PhotoLibraryService.loadPersistedState();
-  renderNativePhotoLibraryInfo();
-  updateFolderPickerButtons();
-  updatePhotoActionButtons();
-
-  try {
-    const permission = await PhotoLibraryService.ensurePermission(true);
-    if (!permission.granted) {
-      showToast('Permita o acesso à biblioteca de fotos nas Configurações do iOS');
-      return;
-    }
-
-    const hasPersistedPhotos = PhotoLibraryService.getCount() > 0;
-
-    if (!hasPersistedPhotos || PhotoLibraryService.needsDailyRefresh()) {
-      await refreshNativePhotoLibrary({
-        notify: !hasPersistedPhotos,
-        reshuffle: true,
-      });
-      return;
-    }
-
-    clockPhotoIndex = PhotoLibraryService.getCurrentIndex();
-    await refreshPhotoViews();
-
-    const probe = await PhotoLibraryService.resolvePhotoAtIndex(clockPhotoIndex, 2048);
-    if (!isUsableImageSrc(probe.src)) {
-      console.warn('bootstrapNativePhotoLibrary: IDs persistidos inválidos, reescaneando biblioteca');
-      await refreshNativePhotoLibrary({ notify: false, reshuffle: false });
-    }
-  } catch (e) {
-    console.warn('bootstrapNativePhotoLibrary:', e);
-    showToast('Não foi possível carregar as fotos da biblioteca');
-  }
-}
-
-async function recoverNativePhotosIfNeeded() {
-  if (!isNativePhotoLibraryMode()) return;
-  const img = document.getElementById('clock-photo-img');
-  const count = PhotoLibraryService.getCount();
-  if (!count || !img) return;
-  if (img.getAttribute('src') && img.style.opacity !== '0') return;
-  try {
-    await refreshPhotoViews();
-    const probe = await PhotoLibraryService.resolvePhotoAtIndex(
-      PhotoLibraryService.getCurrentIndex(),
-      2048,
-    );
-    if (!isUsableImageSrc(probe.src)) {
-      await refreshNativePhotoLibrary({ notify: false, reshuffle: false });
-    }
-  } catch (e) {
-    console.warn('recoverNativePhotosIfNeeded:', e);
-  }
-}
-
 // ─── BOOT ────────────────────────────────────
-function showDevBuildStamp() {
-  if (!['localhost', '127.0.0.1'].includes(location.hostname)) return;
-  const build = document.documentElement.dataset.muralBuild || '?';
-  let el = document.getElementById('mural-dev-stamp');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'mural-dev-stamp';
-    el.style.cssText = 'position:fixed;bottom:4px;left:4px;font-size:10px;color:rgba(255,255,255,0.55);z-index:9999;pointer-events:none;font-family:monospace';
-    document.body.appendChild(el);
-  }
-  el.textContent = `mural ${build}`;
-}
+async function initCapacitor() {
+  if (!isCapacitor()) return;
 
-function showDevSourceWarning(message, tone = 'error') {
-  const host = location.hostname;
-  const isLocal = ['localhost', '127.0.0.1'].includes(host);
-  const isGithub = host.endsWith('github.io') || host.endsWith('github.dev');
-  if (!isLocal && !isGithub) return;
-  let el = document.getElementById('mural-dev-warning');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'mural-dev-warning';
-    el.style.cssText = 'position:fixed;top:0;left:0;right:0;padding:8px 12px;font:600 12px/1.35 -apple-system,sans-serif;z-index:10000;text-align:center';
-    document.body.appendChild(el);
-  }
-  const colors = tone === 'ok'
-    ? { bg: '#0f6e3e', fg: '#eafff3' }
-    : { bg: '#b42318', fg: '#fff' };
-  el.style.background = colors.bg;
-  el.style.color = colors.fg;
-  el.textContent = message;
-}
-
-function localDevUrl() {
-  const port = location.port || '3001';
-  return `http://localhost:${port}`;
-}
-
-async function verifyLocalDevSource() {
-  const host = location.hostname;
-  const isLocal = ['localhost', '127.0.0.1'].includes(host);
-  const isGithubPages = host.endsWith('github.io') || host.endsWith('github.dev');
-  const devUrl = localDevUrl();
-
-  if (isGithubPages) {
-    showDevSourceWarning(`Você está em GitHub Pages (produção). Alterações locais só aparecem em ${devUrl} após npm run dev.`, 'error');
-    return;
+  const StatusBar = capacitorPlugin('StatusBar');
+  if (StatusBar) {
+    try {
+      await StatusBar.setOverlaysWebView({ overlay: true });
+      await StatusBar.hide();
+    } catch(e) { console.warn('StatusBar:', e); }
   }
 
-  if (!isLocal) return;
-
-  if (location.pathname.includes('/smartdisplay/') || location.pathname.endsWith('/smartdisplay')) {
-    showDevSourceWarning(`Pasta smartdisplay/ é legado. Feche e abra ${devUrl}/ (raiz do projeto).`);
-    return;
+  const NavigationBar = capacitorPlugin('NavigationBar');
+  if (NavigationBar) {
+    try { await NavigationBar.hide(); } catch(e) {}
   }
 
-  if (location.pathname.includes('/www/') || location.pathname.endsWith('/www')) {
-    showDevSourceWarning(`Servindo a pasta www/ — use npm run dev e abra ${devUrl}/ (raiz do projeto).`);
-    return;
-  }
-
-  try {
-    const res = await fetch(`/__mural__/dev-status.json?t=${Date.now()}`, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`status ${res.status}`);
-    const data = await res.json();
-    const cssMtime = data.files?.['css/style.css']?.mtime;
-    const stamp = `DEV · project-root · git ${data.git || '?'} · css m${cssMtime || '?'}`;
-    showDevSourceWarning(stamp, 'ok');
-
-    const linkedCss = document.querySelector('link[rel="stylesheet"]');
-    const href = linkedCss?.getAttribute('href') || '';
-    if (cssMtime && href && !href.includes(`m=${cssMtime}`)) {
-      showDevSourceWarning('CSS em cache antigo — recarregue com Cmd+Shift+R (hard refresh).');
+  if (State.cfg.wakelock) {
+    const keepAwake = capacitorPlugin('KeepAwake');
+    if (keepAwake) {
+      try { await keepAwake.keepAwake(); } catch(e) {}
     }
-  } catch (_e) {
-    showDevSourceWarning(`Servidor incorreto — na pasta do projeto rode: npm run dev  →  ${devUrl}`);
   }
 }
 
 async function init() {
-  showDevBuildStamp();
-  void verifyLocalDevSource();
+  await initCapacitor();
   loadConfig();
   initCitiesFromStorage();
+  if (isCapacitor()) initNativeGalleryFolder();
   loadFolderPlaylist();
   loadHiddenFolderPhotos();
   lastMidnightCheckDate = getTodayKey();
@@ -3993,30 +4014,29 @@ async function init() {
   setInterval(tickClock, 1000);
 
   try {
-    if (isNativePhotoLibraryMode()) {
-      await bootstrapNativePhotoLibrary();
+    await clearLegacyPhotoStorage();
+    if (isCapacitor()) {
+      // No Capacitor, galeria vem do plugin nativo — limpa dados antigos do IndexedDB/localStorage
+      await clearOldGalleryData();
+    } else if (isAppleMobileDevice()) {
+      await loadStoredGalleryFolders();
     } else {
-      await clearLegacyPhotoStorage();
-      if (isAppleMobileDevice()) {
-        await loadStoredGalleryFolders();
-      } else {
-        await loadStoredFolderHandles();
-      }
-      if (usesFolderSource()) {
-        await syncPersistedFolderPermissions();
-        const access = await ensureAllLinkedFolderPermissions({ interactive: false });
-        if (!access.ok) {
-          setupDeferredFolderPermissionGrant();
-        }
-        if (access.ok) {
-          await ensureFolderPlaylistForToday();
-        }
-      }
-      updatePhotoActionButtons();
-      await refreshPhotoViews();
+      await loadStoredFolderHandles();
     }
+    if (usesFolderSource()) {
+      await syncPersistedFolderPermissions();
+      const access = await ensureAllLinkedFolderPermissions({ interactive: false });
+      if (!access.ok) {
+        setupDeferredFolderPermissionGrant();
+      }
+      if (access.ok) {
+        await ensureFolderPlaylistForToday();
+      }
+    }
+    updatePhotoActionButtons();
+    await refreshPhotoViews();
   } catch (e) {
-    console.warn('init photos:', e);
+    console.warn('init folder photos:', e);
     void updateFolderPermissionBanner();
   }
 
@@ -4027,7 +4047,6 @@ async function init() {
       checkMidnightPlaylistRefresh();
       void updateFolderPermissionBanner();
       void updateLinkedFoldersPermissionLabels();
-      void recoverNativePhotosIfNeeded();
     }
   });
 
@@ -4036,31 +4055,11 @@ async function init() {
   if (State.cfg.wakelock) requestWakeLock();
 }
 
-// ─── SERVICE WORKER (somente produção — GitHub Pages) ─────
-function shouldUseServiceWorker() {
-  if (typeof MuralPlatform !== 'undefined' && MuralPlatform.isNativePlatform()) return false;
-  const host = location.hostname;
-  return host.endsWith('github.io') || host.endsWith('github.dev');
-}
-
-async function purgePwaCaches() {
-  if ('serviceWorker' in navigator) {
-    const regs = await navigator.serviceWorker.getRegistrations();
-    await Promise.all(regs.map((reg) => reg.unregister()));
-  }
-  if ('caches' in window) {
-    const keys = await caches.keys();
-    await Promise.all(keys.map((key) => caches.delete(key)));
-  }
-}
-
-if ('serviceWorker' in navigator) {
+// ─── SERVICE WORKER ───────────────────────────
+// Service Worker não é usado no Capacitor (assets são locais)
+if ('serviceWorker' in navigator && !isCapacitor()) {
   window.addEventListener('load', () => {
-    if (!shouldUseServiceWorker()) {
-      purgePwaCaches().catch((e) => console.warn('cache purge:', e));
-      return;
-    }
-    navigator.serviceWorker.register(new URL('sw.js?v=123', window.location.href))
+    navigator.serviceWorker.register(new URL('sw.js', window.location.href))
       .then((registration) => {
         console.log('SW registrado');
         registration.update();

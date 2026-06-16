@@ -26,12 +26,6 @@
   --nav-h: 0px;
   --radius: 12px;
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
-  --clock-font: 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', 'Avenir Next', -apple-system, BlinkMacSystemFont, sans-serif;
-  --clock-fill: rgba(255, 255, 255, 0.38);
-  --clock-stroke: rgba(255, 255, 255, 0.52);
-  --clock-glow: rgba(255, 255, 255, 0.1);
-  --clock-shadow: rgba(0, 0, 0, 0.18);
-  --clock-highlight: rgba(255, 255, 255, 0.34);
 }
 
 html, body {
@@ -67,98 +61,74 @@ html, body {
   overflow: hidden;
 }
 .mode.active { display: flex; }
-#mode-clock.mode.active { display: block; }
 
 /* =====================
    MODO: RELÓGIO
    ===================== */
 #mode-clock {
   display: none;
-  position: relative;
+  flex-direction: row;
+  align-items: stretch;
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  min-height: 0;
-  flex: 1;
-  overflow: hidden;
   background: var(--bg);
 }
 
 #mode-clock.active {
-  display: block;
+  display: flex;
 }
 
 .clock-wrapper {
   position: relative;
-  z-index: 2;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
   width: fit-content;
-  max-width: calc(480px + clamp(24px, 4vw, 48px) * 2);
+  max-width: calc(420px + clamp(20px, 3vw, 36px) * 2);
   height: auto;
   align-self: flex-start;
-  padding: clamp(28px, 4vw, 48px) clamp(24px, 4vw, 48px) 24px;
+  padding: 0 clamp(20px, 3vw, 36px) 5px;
   min-width: 0;
   overflow: visible;
   box-sizing: border-box;
-  pointer-events: none;
-}
-
-.clock-wrapper > * {
-  pointer-events: auto;
 }
 
 #clock-left-col {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  text-align: left;
+  align-items: center;
+  text-align: center;
   width: 100%;
-  max-width: 480px;
-  margin-top: 0;
+  max-width: 420px;
+  margin-top: 20px;
   box-sizing: border-box;
 }
 
 #clock-photo-col {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  display: block;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
-  width: 100%;
+  width: auto;
   height: 100%;
   padding: 0;
   box-sizing: border-box;
 }
 
 #clock-photo-frame {
-  position: absolute;
-  inset: 0;
+  flex: 1 1 auto;
   width: 100%;
+  min-width: 0;
+  min-height: 180px;
   height: 100%;
-  min-height: 0;
   border-radius: 0;
   overflow: hidden;
   background: var(--bg);
-}
-
-#clock-photo-frame::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  background:
-    radial-gradient(ellipse 80% 60% at 70% 40%, rgba(90, 140, 200, 0.35) 0%, transparent 70%),
-    radial-gradient(ellipse 60% 50% at 20% 70%, rgba(60, 100, 160, 0.28) 0%, transparent 65%),
-    linear-gradient(145deg, #0a1e3d 0%, #1a3058 45%, #0c1f3a 100%);
-  transition: opacity 0.8s ease;
-}
-
-#clock-photo-frame.has-photo::before {
-  opacity: 0;
+  position: relative;
 }
 
 #clock-photo-img {
@@ -166,9 +136,9 @@ html, body {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center center;
-  transition: opacity 1.2s ease;
+  transition: opacity 1s ease;
   pointer-events: none;
   z-index: 0;
 }
@@ -252,6 +222,21 @@ html, body {
 
 .clock-photo-meta-line[hidden] {
   display: none;
+}
+
+.clock-photo-meta-time-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+#clock-photo-meta-index {
+  font-size: 11px;
+  font-weight: 300;
+  color: rgba(232, 240, 255, 0.45);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 
 .clock-photo-nav {
@@ -393,114 +378,45 @@ body.clock-nav-visible .clock-photo-nav:not(:disabled) .clock-photo-nav-icon,
   transform: translateX(1px);
 }
 
-/* ── RELÓGIO PREMIUM (vidro translúcido) ── */
-.clock-glass {
-  position: relative;
-  display: inline-block;
-  font-family: var(--clock-font);
+#clock-time {
+  font-size: clamp(52px, calc(12vw + 6px), 136px);
   font-weight: 100;
-  letter-spacing: -0.04em;
-  line-height: 0.92;
+  letter-spacing: -2px;
+  color: var(--text-dim);
+  line-height: 1;
   font-variant-numeric: lining-nums tabular-nums;
-  isolation: isolate;
-  transition: opacity 0.8s ease;
 }
 
-.clock-glass--time {
-  font-size: clamp(76px, 14vw, 188px);
-}
-
-.clock-glass--seconds {
-  font-size: clamp(18px, 3vw, 30px);
-  font-weight: 100;
-  letter-spacing: 0.14em;
-  margin-top: 6px;
-  opacity: 0.72;
-}
-
-.clock-glass-shadow,
-.clock-glass-face {
-  font: inherit;
-  letter-spacing: inherit;
-  font-variant-numeric: inherit;
-  white-space: nowrap;
-}
-
-.clock-glass-shadow {
-  position: absolute;
-  left: 0;
-  top: 0;
-  z-index: 0;
-  pointer-events: none;
-  user-select: none;
-  color: transparent;
-  text-shadow: 0 1px 2px var(--clock-shadow);
-  transform: translateY(1px);
-  opacity: 0.55;
-}
-
-.clock-glass-face {
-  position: relative;
-  z-index: 1;
-  display: block;
-  color: var(--clock-fill);
-  -webkit-text-stroke: 0.6px var(--clock-stroke);
-  paint-order: stroke fill;
-  text-shadow:
-    0 -1px 0 var(--clock-highlight),
-    0 1px 2px var(--clock-shadow),
-    0 0 28px var(--clock-glow);
-  -webkit-font-smoothing: antialiased;
-}
-
-html[data-clock-tone="light"] {
-  --clock-fill: rgba(255, 255, 255, 0.34);
-  --clock-stroke: rgba(255, 255, 255, 0.48);
-  --clock-glow: rgba(255, 255, 255, 0.09);
-  --clock-shadow: rgba(0, 0, 0, 0.2);
-  --clock-highlight: rgba(255, 255, 255, 0.3);
-}
-
-html[data-clock-tone="dark"] {
-  --clock-fill: rgba(255, 255, 255, 0.16);
-  --clock-stroke: rgba(255, 255, 255, 0.28);
-  --clock-glow: rgba(255, 255, 255, 0.11);
-  --clock-shadow: rgba(0, 0, 0, 0.1);
-  --clock-highlight: rgba(255, 255, 255, 0.18);
+#clock-seconds {
+  font-size: clamp(18px, 4vw, 36px);
+  font-weight: 200;
+  color: var(--text-dim);
+  letter-spacing: 2px;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
 }
 
 #clock-date {
-  font-family: var(--clock-font);
-  font-size: clamp(11px, 1.8vw, 18px);
+  font-size: clamp(9px, 4vw, 27px);
   font-weight: 200;
-  color: rgba(255, 255, 255, 0.62);
-  margin-top: 14px;
-  letter-spacing: 0.12em;
-  line-height: 1.2;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.22);
-  transition: color 0.8s ease;
-}
-
-html[data-clock-tone="light"] #clock-date {
-  color: rgba(255, 255, 255, 0.78);
-}
-
-html[data-clock-tone="dark"] #clock-date {
-  color: rgba(255, 255, 255, 0.52);
+  color: var(--text-mid);
+  margin-top: 12px;
+  letter-spacing: 2px;
+  line-height: 1;
 }
 
 .clock-divider {
-  width: 48px;
+  width: 40px;
   height: 1px;
-  background: rgba(255, 255, 255, 0.14);
-  margin: 22px 0;
+  background: var(--bg3);
+  margin: 20px auto;
 }
 
 /* ── WEATHER BLOCK ── */
 #weather-block {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
   width: 100%;
   max-width: 100%;
@@ -513,9 +429,7 @@ html[data-clock-tone="dark"] #clock-date {
   justify-content: center;
   gap: 37px;
   width: 100%;
-  position: relative;
-  top: 20px;
-  margin-top: 0;
+  margin-top: -20px;
 }
 
 #weather-current-left {
@@ -632,7 +546,7 @@ html[data-clock-tone="dark"] #clock-date {
 #weather-daily {
   display: flex;
   gap: 4px;
-  margin-top: 0;
+  margin-top: 5px;
   background: rgba(255,255,255,0.04);
   border-radius: 10px;
   padding: 8px 4px;
@@ -717,40 +631,39 @@ html[data-clock-tone="dark"] #clock-date {
   font-variant-numeric: tabular-nums;
 }
 
-body.night-mode .clock-glass-face {
-  color: rgba(180, 210, 240, 0.18);
-  -webkit-text-stroke-color: rgba(150, 190, 230, 0.26);
-  text-shadow:
-    0 -1px 0 rgba(150, 190, 230, 0.14),
-    0 0 18px rgba(140, 180, 220, 0.08);
-}
-
-body.night-mode .clock-glass-shadow {
-  opacity: 0.4;
-}
-
-body.night-mode #clock-date {
-  color: rgba(140, 175, 210, 0.48);
-}
-body.night-mode #weather-temp-big {
-  color: #809BBC;
-  opacity: 1;
-}
+body.night-mode #clock-time { color: #4a7aaa; opacity: 0.6; }
+body.night-mode #weather-temp-big { color: #809BBC; opacity: 0.7; }
 
 @media (max-width: 720px) {
+  #mode-clock {
+    flex-direction: column;
+  }
+
   .clock-wrapper {
+    align-self: stretch;
     width: 100%;
     max-width: none;
-    padding: clamp(20px, 5vw, 32px) clamp(18px, 4vw, 28px) 20px;
+    height: auto;
+    padding: 0 clamp(20px, 3vw, 36px) 5px;
   }
 
   #clock-left-col {
     width: 100%;
-    max-width: none;
+    max-width: 420px;
+    margin-inline: auto;
   }
 
-  .clock-glass--time {
-    font-size: clamp(64px, 22vw, 120px);
+  #clock-photo-col {
+    flex: 0 0 auto;
+    width: 100%;
+    height: auto;
+    padding: 0 0 16px;
+  }
+
+  #clock-photo-frame {
+    min-height: 200px;
+    max-height: 40vh;
+    height: auto;
   }
 }
 
@@ -1587,26 +1500,6 @@ html:not(.platform-ios) #btn-add-photo-gallery-ios {
   display: none !important;
 }
 
-html.platform-capacitor-ios .settings-hint--ios,
-html.platform-capacitor-ios .settings-hint--desktop-folder,
-html.platform-capacitor-ios #photo-folder-row {
-  display: none !important;
-}
-
-html.platform-capacitor-ios .settings-hint--capacitor-ios,
-html.platform-capacitor-ios #native-photo-library-panel {
-  display: block !important;
-}
-
-html:not(.platform-capacitor-ios) .settings-hint--capacitor-ios,
-html:not(.platform-capacitor-ios) #native-photo-library-panel {
-  display: none !important;
-}
-
-.native-photo-library-info {
-  color: var(--text-mid);
-}
-
 label.folder-picker-btn {
   display: block;
   cursor: pointer;
@@ -2107,12 +2000,6 @@ label.btn-choose-photo-folder {
 @keyframes fx-zoom-in  { from { transform:scale(1.12); opacity:0 } to { transform:scale(1); opacity:1 } }
 @keyframes fx-zoom-out { from { opacity:1 } to { opacity:0 } }
 
-/* BLUR */
-.fx-blur .slide-img.slide-in  { animation: fx-blur-in 0.8s ease forwards; }
-.fx-blur .slide-img.slide-out { animation: fx-blur-out 0.8s ease forwards; }
-@keyframes fx-blur-in  { from { opacity:0; filter:blur(18px); transform:scale(1.03) } to { opacity:1; filter:blur(0); transform:scale(1) } }
-@keyframes fx-blur-out { from { opacity:1; filter:blur(0) } to { opacity:0; filter:blur(14px) } }
-
 /* KEN BURNS */
 .fx-kenburns .slide-img.active { animation: fx-kenburns 8s ease-in-out infinite alternate; }
 .fx-kenburns .slide-img.slide-in  { animation: fx-fade-in 1s ease forwards, fx-kenburns 8s ease-in-out infinite alternate; }
@@ -2149,3 +2036,92 @@ label.btn-choose-photo-folder {
   color: var(--text);
 }
 .btn-source-icon { font-size: 28px; line-height: 1; }
+
+/* ── PHOTO SOURCE MODAL ── */
+#photo-source-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 11, 24, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+#photo-source-overlay.hidden { display: none !important; }
+
+#photo-source-sheet {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 20px 20px 0 0;
+  padding: 28px 24px 32px;
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#photo-source-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 2px;
+  text-align: center;
+}
+
+#photo-source-hint {
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: center;
+  margin: 0 0 4px;
+}
+
+.photo-source-btn {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 2px 12px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.photo-source-btn:hover, .photo-source-btn:active {
+  background: rgba(26, 111, 255, 0.12);
+  border-color: var(--accent);
+}
+.photo-source-icon {
+  grid-row: 1 / 3;
+  font-size: 32px;
+  text-align: center;
+}
+.photo-source-label {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+.photo-source-desc {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+#btn-photo-source-cancel {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text-dim);
+  font-size: 15px;
+  padding: 12px;
+  cursor: pointer;
+  margin-top: 4px;
+  -webkit-tap-highlight-color: transparent;
+}
+#btn-photo-source-cancel:hover { color: var(--text); border-color: var(--text-dim); }

@@ -1,23 +1,8 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-mural-build="20260617-live">
+<html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
   <script>
-    (function purgeStaleCaches() {
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function (regs) {
-          regs.forEach(function (reg) { reg.unregister(); });
-        });
-      }
-      if ('caches' in window) {
-        caches.keys().then(function (keys) {
-          keys.forEach(function (key) { caches.delete(key); });
-        });
-      }
-    })();
     (function () {
       function appBaseHref() {
         if (location.protocol === 'file:') {
@@ -59,40 +44,58 @@
     }
     .mode { display: none; flex: 1; min-height: 0; }
     #mode-clock.active {
-      display: block;
+      display: flex;
+      flex-direction: row;
       flex: 1;
       min-height: 0;
       width: 100%;
       max-width: 100%;
       overflow: hidden;
-      position: relative;
     }
     .clock-wrapper {
-      position: relative;
-      z-index: 2;
-      padding: clamp(28px, 4vw, 48px) clamp(24px, 4vw, 48px) 24px;
+      padding: 0 28px 5px;
       min-width: 0;
       align-self: start;
       height: fit-content;
       width: fit-content;
-      align-items: flex-start;
+      align-items: center;
     }
     #clock-photo-col {
-      position: absolute;
-      inset: 0;
-      z-index: 0;
+      display: flex;
+      min-width: 0;
+      min-height: 0;
+      height: 100%;
+      padding: 0;
     }
     #clock-photo-frame {
-      position: absolute;
-      inset: 0;
+      flex: 1;
+      min-height: 160px;
+      position: relative;
       background: #030b18;
     }
-    #clock-photo-img {
-      object-fit: cover;
+    #clock-time {
+      font-size: clamp(46px, calc(12vw - 10px), 110px);
+      font-weight: 100;
+      letter-spacing: -2px;
+      line-height: 1;
+    }
+    #clock-seconds {
+      font-size: clamp(18px, 4vw, 32px);
+      font-weight: 200;
+      color: #4a6080;
+      margin-top: 4px;
+    }
+    #clock-date {
+      font-size: clamp(9px, 4vw, 23px);
+      font-weight: 200;
+      letter-spacing: 2px;
+      line-height: 1;
+      color: #7a9cc0;
+      margin-top: 12px;
     }
   </style>
   <title>SmartDisplay</title>
-  <link rel="stylesheet" href="css/style.css?v=125">
+  <link rel="stylesheet" href="css/style.css">
   <script>
     (function () {
       var root = document.documentElement;
@@ -114,29 +117,6 @@
 
     <!-- MODO: RELÓGIO (padrão) -->
     <div id="mode-clock" class="mode active">
-      <div id="clock-photo-col">
-        <div id="clock-photo-frame">
-          <img id="clock-photo-img" alt="">
-          <div id="clock-photo-empty">Configurar Fotos</div>
-          <div id="clock-photo-meta" class="clock-photo-meta hidden" aria-live="polite">
-            <div id="clock-photo-meta-location" class="clock-photo-meta-line clock-photo-meta-location">
-              <span class="clock-photo-meta-kicker">Local</span><span id="clock-photo-meta-location-value"></span>
-            </div>
-            <div id="clock-photo-meta-date" class="clock-photo-meta-line"></div>
-            <div id="clock-photo-meta-time" class="clock-photo-meta-line"></div>
-          </div>
-          <button type="button" id="clock-photo-prev" class="clock-photo-nav" aria-label="Foto anterior" disabled>
-            <svg class="clock-photo-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M16 5 9 12 16 19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </button>
-          <button type="button" id="clock-photo-next" class="clock-photo-nav" aria-label="Próxima foto" disabled>
-            <svg class="clock-photo-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M8 5 15 12 8 19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </button>
-        </div>
-      </div>
       <div class="clock-wrapper">
         <button type="button" id="clock-city-prev" class="clock-photo-nav clock-city-nav" aria-label="Cidade anterior" disabled>
           <svg class="clock-photo-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -149,14 +129,8 @@
           </svg>
         </button>
         <div id="clock-left-col">
-        <div id="clock-time" class="clock-glass clock-glass--time" data-text="00:00">
-          <span class="clock-glass-shadow" aria-hidden="true">00:00</span>
-          <span class="clock-glass-face">00:00</span>
-        </div>
-        <div id="clock-seconds" class="clock-glass clock-glass--seconds" data-text="00">
-          <span class="clock-glass-shadow" aria-hidden="true">00</span>
-          <span class="clock-glass-face">00</span>
-        </div>
+        <div id="clock-time">00:00</div>
+        <div id="clock-seconds">00</div>
         <div id="clock-date">segunda-feira, 1 de janeiro</div>
         <div class="clock-divider"></div>
         <div id="weather-block">
@@ -180,6 +154,32 @@
           <div id="weather-hourly"></div>
         </div>
         </div><!-- /clock-left-col -->
+      </div>
+      <div id="clock-photo-col">
+        <div id="clock-photo-frame">
+          <img id="clock-photo-img" alt="">
+          <div id="clock-photo-empty">Configurar Fotos</div>
+          <div id="clock-photo-meta" class="clock-photo-meta hidden" aria-live="polite">
+            <div id="clock-photo-meta-location" class="clock-photo-meta-line clock-photo-meta-location">
+              <span class="clock-photo-meta-kicker">Local</span><span id="clock-photo-meta-location-value"></span>
+            </div>
+            <div id="clock-photo-meta-date" class="clock-photo-meta-line"></div>
+            <div id="clock-photo-meta-time" class="clock-photo-meta-line clock-photo-meta-time-row">
+              <span id="clock-photo-meta-time-value"></span>
+              <span id="clock-photo-meta-index"></span>
+            </div>
+          </div>
+          <button type="button" id="clock-photo-prev" class="clock-photo-nav" aria-label="Foto anterior" disabled>
+            <svg class="clock-photo-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M16 5 9 12 16 19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <button type="button" id="clock-photo-next" class="clock-photo-nav" aria-label="Próxima foto" disabled>
+            <svg class="clock-photo-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 5 15 12 8 19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -215,14 +215,7 @@
 
   </div>
 
-  <button type="button" id="btn-fullscreen-fab" class="fullscreen-fab" aria-label="Tela cheia" title="Tela cheia">
-    <svg class="settings-fab-icon fab-icon-enter" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-    </svg>
-    <svg class="settings-fab-icon fab-icon-exit hidden" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-    </svg>
-  </button>
+
   <button type="button" id="btn-settings-fab" class="settings-fab" aria-label="Configurações" title="Configurações">
     <svg class="settings-fab-icon" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
@@ -260,14 +253,6 @@
         <div id="settings-section-photos" class="settings-section-body">
         <p class="settings-hint settings-hint--desktop-folder">Inclua <strong>várias pastas</strong> locais. O app grava o acesso à pasta (nome e permissão) — nada é importado. À meia-noite relê as pastas e monta uma nova lista aleatória de fotos.</p>
         <p class="settings-hint settings-hint--ios">No iPad/iPhone use <strong>Incluir fotos da galeria</strong>. Toque em <strong>Selecionar</strong> (canto superior direito) e marque várias fotos de uma vez — ou <strong>Selecionar tudo</strong> em um álbum. As fotos ficam salvas neste dispositivo; use <strong>Adicionar mais fotos</strong> para incluir outras depois.</p>
-        <div id="native-photo-library-panel" class="native-photo-library-panel" hidden>
-          <p class="settings-hint settings-hint--capacitor-ios">No app iOS, o Mural lê diretamente a <strong>biblioteca de fotos do iPad</strong>. Nenhuma imagem é copiada — apenas os identificadores são usados.</p>
-          <p id="native-photo-library-info" class="settings-hint native-photo-library-info">Carregando biblioteca…</p>
-          <div class="photo-actions-row">
-            <button type="button" class="btn-action btn-action--compact photo-actions-btn" id="btn-refresh-photo-library" disabled>Atualizar Biblioteca</button>
-            <button type="button" class="btn-action btn-action--compact photo-actions-btn" id="btn-request-photo-permission">Permitir acesso</button>
-          </div>
-        </div>
         <div class="photo-folder-row" id="photo-folder-row">
           <button type="button" class="btn-action folder-picker-btn" id="btn-add-photo-folder-native" hidden>Incluir pasta</button>
           <label for="cfg-photo-folder-fallback" class="btn-action folder-picker-btn" id="btn-add-photo-folder-fallback">Incluir pasta</label>
@@ -285,6 +270,7 @@
           <button type="button" class="btn-action btn-action--compact photo-actions-btn" id="btn-show-photo-list" disabled>Lista de Fotos</button>
           <button type="button" class="btn-action btn-action--compact photo-actions-btn" id="btn-rescan-folders" disabled>Releitura das pastas</button>
         </div>
+        <button type="button" class="btn-action btn-action--compact platform-ios-only" id="btn-change-photo-source" style="display:none">Alterar fonte de fotos</button>
         <div id="photo-playlist-panel" class="photo-playlist-panel hidden" aria-live="polite"></div>
         <label>Intervalo do slideshow
           <select id="cfg-interval">
@@ -301,7 +287,6 @@
             <option value="fade">Fade (dissolver)</option>
             <option value="slide">Deslizar</option>
             <option value="zoom">Zoom in</option>
-            <option value="blur">Blur (desfoque)</option>
             <option value="kenburns">Ken Burns</option>
             <option value="random">Randômico</option>
           </select>
@@ -339,15 +324,6 @@
         </div>
       </div>
 
-      <div class="settings-section" data-section="tools">
-        <button type="button" class="settings-section-toggle" aria-expanded="true" aria-controls="settings-section-tools">
-          <h3>Geral</h3>
-          <span class="settings-section-chevron" aria-hidden="true">▾</span>
-        </button>
-        <div id="settings-section-tools" class="settings-section-body">
-        <button class="btn-action btn-fullscreen" id="btn-fullscreen">Tela cheia</button>
-        </div>
-      </div>
 
     </div>
   </div>
@@ -383,11 +359,33 @@
   <input type="file" id="cfg-photo-folder-fallback" class="folder-picker-input" tabindex="-1" webkitdirectory directory multiple>
   <input type="file" id="cfg-photo-gallery-ios" class="folder-picker-input" tabindex="-1" accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,image/*" multiple>
 
-  <script src="js/platform.js?v=126"></script>
-  <script src="js/photo-library-plugin.js?v=126"></script>
-  <script src="js/services/photo-shuffle-service.js?v=126"></script>
-  <script src="js/services/slideshow-service.js?v=126"></script>
-  <script src="js/services/photo-library-service.js?v=126"></script>
-  <script src="js/app.js?v=126" defer></script>
+  <!-- Modal escolha de fonte de fotos -->
+  <div id="photo-source-overlay" class="hidden">
+    <div id="photo-source-sheet">
+      <h3 id="photo-source-title">De onde buscar as fotos?</h3>
+      <p id="photo-source-hint">Esta escolha será salva. Você pode alterar depois nas configurações.</p>
+      <button type="button" class="photo-source-btn" id="btn-photo-source-gallery">
+        <span class="photo-source-icon">🖼️</span>
+        <span class="photo-source-label">Galeria completa</span>
+        <span class="photo-source-desc">Carrega todas as fotos automaticamente, sem seleção</span>
+      </button>
+      <button type="button" class="photo-source-btn" id="btn-photo-source-album">
+        <span class="photo-source-icon">📁</span>
+        <span class="photo-source-label">Álbum específico</span>
+        <span class="photo-source-desc">Você escolhe quais fotos ou álbum exibir</span>
+      </button>
+      <button type="button" id="btn-photo-source-cancel">Cancelar</button>
+    </div>
+  </div>
+
+  <!-- Capacitor SDK: carregado apenas no contexto nativo -->
+  <script>
+    if (window.location.protocol === 'capacitor:' || navigator.userAgent.includes('Capacitor')) {
+      var s = document.createElement('script');
+      s.src = 'capacitor.js';
+      document.head.appendChild(s);
+    }
+  </script>
+  <script src="js/app.js" defer></script>
 </body>
 </html>
