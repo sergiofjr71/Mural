@@ -117,7 +117,28 @@ Em `Signing & Capabilities`, selecione seu Team e Bundle ID (`com.sergiofjr71.mu
 
 ## Desenvolvimento web local
 
-A PWA continua funcionando em `python3 -m http.server 8080`. No navegador, o plugin nativo não está disponível — o fluxo de pastas/galeria manual permanece.
+**Use sempre o servidor de desenvolvimento do projeto** — não sirva a pasta `www/` no navegador.
+
+```bash
+npm install
+npm run dev
+# Abra: http://localhost:8080
+```
+
+Confirme que está na versão certa:
+- Canto inferior esquerdo: `mural 20260617-root`
+- Cabeçalho HTTP: `X-Mural-Source: project-root`
+- Se aparecer um aviso vermelho no topo, o servidor ou a pasta estão errados
+
+| Comando | Uso |
+|---------|-----|
+| `npm run dev` | Desenvolvimento no browser (serve a **raiz**) |
+| `npm run sync:www` | Copia raiz → `www/` (só para Capacitor) |
+| `npm run cap:sync` | Sincroniza `www/` + plugins para Xcode |
+
+**Não use** `python3 -m http.server` dentro de `www/` — essa pasta é cópia estática para iOS.
+
+No navegador, o plugin nativo não está disponível — o fluxo de pastas/galeria manual permanece.
 
 ## Critérios de aceitação
 

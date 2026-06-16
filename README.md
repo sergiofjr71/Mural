@@ -33,7 +33,7 @@ npm run dev
 - Edite sempre os arquivos na **raiz** do projeto (`index.html`, `css/`, `js/`)
 - A pasta `www/` é gerada automaticamente só para o build iOS (`npm run cap:sync`)
 - **Não** use `python3 -m http.server` dentro de `www/`
-- No canto inferior esquerdo deve aparecer `mural 20260616-root` — confirma que está na versão certa
+- No canto inferior esquerdo deve aparecer `mural 20260617-root` — confirma que está na versão certa
 
 **Atenção:** Service Worker (modo offline) só funciona via HTTPS ou localhost. Para uso local, use a Opção A.
 

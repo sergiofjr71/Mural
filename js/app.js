@@ -3866,8 +3866,43 @@ function showDevBuildStamp() {
   el.textContent = `mural ${build}`;
 }
 
+function showDevSourceWarning(message) {
+  if (!['localhost', '127.0.0.1'].includes(location.hostname)) return;
+  let el = document.getElementById('mural-dev-warning');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'mural-dev-warning';
+    el.style.cssText = 'position:fixed;top:0;left:0;right:0;padding:10px 12px;background:#b42318;color:#fff;font:600 13px/1.4 -apple-system,sans-serif;z-index:10000;text-align:center';
+    document.body.appendChild(el);
+  }
+  el.textContent = message;
+}
+
+async function verifyLocalDevSource() {
+  if (!['localhost', '127.0.0.1'].includes(location.hostname)) return;
+
+  if (location.pathname.includes('/www/') || location.pathname.endsWith('/www')) {
+    showDevSourceWarning('Servindo a pasta www/ — use npm run dev e abra http://localhost:8080/ (raiz do projeto).');
+    return;
+  }
+
+  try {
+    const res = await fetch(`${location.origin}/?mural-dev-check=${Date.now()}`, {
+      method: 'HEAD',
+      cache: 'no-store',
+    });
+    const source = res.headers.get('X-Mural-Source');
+    if (source !== 'project-root') {
+      showDevSourceWarning('Servidor incorreto — pare o servidor atual e rode: npm run dev');
+    }
+  } catch (_e) {
+    // HEAD pode falhar em alguns proxies; o stamp de build ainda ajuda a validar.
+  }
+}
+
 async function init() {
   showDevBuildStamp();
+  void verifyLocalDevSource();
   loadConfig();
   initCitiesFromStorage();
   loadFolderPlaylist();
