@@ -3,7 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <script>
+    (function purgeStaleCaches() {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          regs.forEach(function (reg) { reg.unregister(); });
+        });
+      }
+      if ('caches' in window) {
+        caches.keys().then(function (keys) {
+          keys.forEach(function (key) { caches.delete(key); });
+        });
+      }
+    })();
+  </script>
     (function () {
       function appBaseHref() {
         if (location.protocol === 'file:') {
@@ -116,9 +131,12 @@
       color: #7a9cc0;
       margin-top: 12px;
     }
+    #weather-temp-big {
+      color: #fff !important;
+    }
   </style>
   <title>SmartDisplay</title>
-  <link rel="stylesheet" href="css/style.css?v=122">
+  <link rel="stylesheet" href="css/style.css?v=123">
   <script>
     (function () {
       var root = document.documentElement;
@@ -414,6 +432,6 @@
   <script src="js/services/photo-shuffle-service.js?v=120"></script>
   <script src="js/services/slideshow-service.js?v=120"></script>
   <script src="js/services/photo-library-service.js?v=120"></script>
-  <script src="js/app.js?v=120" defer></script>
+  <script src="js/app.js?v=123" defer></script>
 </body>
 </html>

@@ -3924,24 +3924,36 @@ async function init() {
   if (State.cfg.wakelock) requestWakeLock();
 }
 
-// ─── SERVICE WORKER ───────────────────────────
-if ('serviceWorker' in navigator && !(typeof MuralPlatform !== 'undefined' && MuralPlatform.isNativePlatform())) {
+// ─── SERVICE WORKER (somente produção — GitHub Pages) ─────
+function shouldUseServiceWorker() {
+  if (typeof MuralPlatform !== 'undefined' && MuralPlatform.isNativePlatform()) return false;
+  const host = location.hostname;
+  return host.endsWith('github.io') || host.endsWith('github.dev');
+}
+
+async function purgePwaCaches() {
+  if ('serviceWorker' in navigator) {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map((reg) => reg.unregister()));
+  }
+  if ('caches' in window) {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((key) => caches.delete(key)));
+  }
+}
+
+if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register(new URL('sw.js?v=120', window.location.href))
+    if (!shouldUseServiceWorker()) {
+      purgePwaCaches().catch((e) => console.warn('cache purge:', e));
+      return;
+    }
+    navigator.serviceWorker.register(new URL('sw.js?v=123', window.location.href))
       .then((registration) => {
         console.log('SW registrado');
         registration.update();
-        if (registration.waiting) {
-          registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-        }
       })
       .catch((e) => console.warn('SW erro:', e));
-
-    if ('caches' in window) {
-      caches.keys().then((keys) => Promise.all(
-        keys.filter((key) => key !== 'smartdisplay-v120').map((key) => caches.delete(key))
-      )).catch((e) => console.warn('cache cleanup:', e));
-    }
   });
 }
 
