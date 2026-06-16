@@ -126,9 +126,9 @@ npm run dev
 ```
 
 Confirme que está na versão certa:
-- Canto inferior esquerdo: `mural 20260617-root`
-- Cabeçalho HTTP: `X-Mural-Source: project-root`
-- Se aparecer um aviso vermelho no topo, o servidor ou a pasta estão errados
+- Barra verde no topo: `DEV · project-root · git … · css m…`
+- Canto inferior esquerdo: `mural 20260617-live`
+- Diagnóstico: `npm run dev:doctor` ou http://localhost:8080/__mural__/dev-status.json
 
 | Comando | Uso |
 |---------|-----|

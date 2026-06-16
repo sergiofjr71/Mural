@@ -3860,26 +3860,48 @@ function showDevBuildStamp() {
   if (!el) {
     el = document.createElement('div');
     el.id = 'mural-dev-stamp';
-    el.style.cssText = 'position:fixed;bottom:4px;left:4px;font-size:10px;color:rgba(255,255,255,0.4);z-index:9999;pointer-events:none;font-family:monospace';
+    el.style.cssText = 'position:fixed;bottom:4px;left:4px;font-size:10px;color:rgba(255,255,255,0.55);z-index:9999;pointer-events:none;font-family:monospace';
     document.body.appendChild(el);
   }
   el.textContent = `mural ${build}`;
 }
 
-function showDevSourceWarning(message) {
-  if (!['localhost', '127.0.0.1'].includes(location.hostname)) return;
+function showDevSourceWarning(message, tone = 'error') {
+  const host = location.hostname;
+  const isLocal = ['localhost', '127.0.0.1'].includes(host);
+  const isGithub = host.endsWith('github.io') || host.endsWith('github.dev');
+  if (!isLocal && !isGithub) return;
   let el = document.getElementById('mural-dev-warning');
   if (!el) {
     el = document.createElement('div');
     el.id = 'mural-dev-warning';
-    el.style.cssText = 'position:fixed;top:0;left:0;right:0;padding:10px 12px;background:#b42318;color:#fff;font:600 13px/1.4 -apple-system,sans-serif;z-index:10000;text-align:center';
+    el.style.cssText = 'position:fixed;top:0;left:0;right:0;padding:8px 12px;font:600 12px/1.35 -apple-system,sans-serif;z-index:10000;text-align:center';
     document.body.appendChild(el);
   }
+  const colors = tone === 'ok'
+    ? { bg: '#0f6e3e', fg: '#eafff3' }
+    : { bg: '#b42318', fg: '#fff' };
+  el.style.background = colors.bg;
+  el.style.color = colors.fg;
   el.textContent = message;
 }
 
 async function verifyLocalDevSource() {
-  if (!['localhost', '127.0.0.1'].includes(location.hostname)) return;
+  const host = location.hostname;
+  const isLocal = ['localhost', '127.0.0.1'].includes(host);
+  const isGithubPages = host.endsWith('github.io') || host.endsWith('github.dev');
+
+  if (isGithubPages) {
+    showDevSourceWarning('Você está em GitHub Pages (produção). Alterações locais só aparecem em http://localhost:8080 após npm run dev.', 'error');
+    return;
+  }
+
+  if (!isLocal) return;
+
+  if (location.pathname.includes('/smartdisplay/') || location.pathname.endsWith('/smartdisplay')) {
+    showDevSourceWarning('Pasta smartdisplay/ é legado. Feche e abra http://localhost:8080/ (raiz do projeto).');
+    return;
+  }
 
   if (location.pathname.includes('/www/') || location.pathname.endsWith('/www')) {
     showDevSourceWarning('Servindo a pasta www/ — use npm run dev e abra http://localhost:8080/ (raiz do projeto).');
@@ -3887,16 +3909,20 @@ async function verifyLocalDevSource() {
   }
 
   try {
-    const res = await fetch(`${location.origin}/?mural-dev-check=${Date.now()}`, {
-      method: 'HEAD',
-      cache: 'no-store',
-    });
-    const source = res.headers.get('X-Mural-Source');
-    if (source !== 'project-root') {
-      showDevSourceWarning('Servidor incorreto — pare o servidor atual e rode: npm run dev');
+    const res = await fetch(`/__mural__/dev-status.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    const data = await res.json();
+    const cssMtime = data.files?.['css/style.css']?.mtime;
+    const stamp = `DEV · project-root · git ${data.git || '?'} · css m${cssMtime || '?'}`;
+    showDevSourceWarning(stamp, 'ok');
+
+    const linkedCss = document.querySelector('link[rel="stylesheet"]');
+    const href = linkedCss?.getAttribute('href') || '';
+    if (cssMtime && href && !href.includes(`m=${cssMtime}`)) {
+      showDevSourceWarning('CSS em cache antigo — recarregue com Cmd+Shift+R (hard refresh).');
     }
   } catch (_e) {
-    // HEAD pode falhar em alguns proxies; o stamp de build ainda ajuda a validar.
+    showDevSourceWarning('Servidor incorreto — na pasta do projeto rode: npm run dev  →  http://localhost:8080');
   }
 }
 

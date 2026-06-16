@@ -2,185 +2,19 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="SmartDisplay">
-  <meta name="theme-color" content="#030b18">
-  <title>SmartDisplay</title>
-  <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="icons/icon-180.png">
-  <link rel="stylesheet" href="css/style.css">
+  <meta http-equiv="refresh" content="0; url=../">
+  <title>SmartDisplay — pasta legada</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; background: #030b18; color: #e8f0ff; padding: 2rem; }
+    a { color: #6eb5ff; }
+  </style>
 </head>
 <body>
-
-  <!-- TELA PRINCIPAL -->
-  <div id="app">
-
-    <!-- MODO: RELÓGIO (padrão) -->
-    <div id="mode-clock" class="mode active">
-      <div class="clock-wrapper">
-        <div id="clock-time">00:00</div>
-        <div id="clock-seconds">00</div>
-        <div id="clock-date">segunda-feira, 1 de janeiro</div>
-        <div class="clock-divider"></div>
-        <div id="weather-main">
-          <span id="weather-icon-big">⛅</span>
-          <span id="weather-temp-big">--°</span>
-          <div class="weather-details">
-            <span id="weather-city-name">--</span>
-            <span id="weather-desc-main">carregando...</span>
-            <span id="weather-humidity">Umidade: --%</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- MODO: SLIDESHOW -->
-    <div id="mode-slideshow" class="mode">
-      <div id="slideshow-container">
-        <img id="slide-img-a" class="slide-img active" src="" alt="">
-        <img id="slide-img-b" class="slide-img" src="" alt="">
-        <div id="slideshow-overlay">
-          <div id="slide-clock">00:00</div>
-          <div id="slide-date">--</div>
-          <div id="slide-weather">⛅ --°</div>
-        </div>
-        <div id="slide-empty">
-          <div class="empty-icon">🖼</div>
-          <p>Nenhuma foto carregada</p>
-          <p class="empty-sub">Abra as configurações e adicione fotos</p>
-        </div>
-        <div id="slide-counter"></div>
-      </div>
-    </div>
-
-    <!-- MODO: CÂMERAS -->
-    <div id="mode-cameras" class="mode">
-      <div id="cameras-grid">
-        <!-- câmeras renderizadas via JS -->
-      </div>
-      <div id="clock-cameras">
-        <span id="cam-time">00:00</span>
-        <span id="cam-weather">⛅ --°</span>
-      </div>
-    </div>
-
-    <!-- BARRA DE NAVEGAÇÃO -->
-    <nav id="nav-bar">
-      <button class="nav-btn active" data-mode="clock" aria-label="Relógio">
-        <span class="nav-icon">🕐</span>
-        <span class="nav-label">Relógio</span>
-      </button>
-      <button class="nav-btn" data-mode="slideshow" aria-label="Fotos">
-        <span class="nav-icon">🖼</span>
-        <span class="nav-label">Fotos</span>
-      </button>
-      <button class="nav-btn" data-mode="cameras" aria-label="Câmeras">
-        <span class="nav-icon">📹</span>
-        <span class="nav-label">Câmeras</span>
-      </button>
-      <button class="nav-btn" id="btn-settings" aria-label="Configurações">
-        <span class="nav-icon">⚙️</span>
-        <span class="nav-label">Config</span>
-      </button>
-    </nav>
-
-  </div>
-
-  <!-- PAINEL DE CONFIGURAÇÕES -->
-  <div id="settings-panel" class="hidden">
-    <div id="settings-content">
-      <div class="settings-header">
-        <h2>Configurações</h2>
-        <button id="btn-close-settings" aria-label="Fechar">✕</button>
-      </div>
-
-      <div class="settings-section">
-        <h3>Clima</h3>
-        <label>Cidade
-          <input type="text" id="cfg-city" placeholder="Ex: São Paulo" autocomplete="off">
-        </label>
-        <label>Chave API OpenWeatherMap
-          <input type="text" id="cfg-api-key" placeholder="Cole sua chave gratuita aqui" autocomplete="off">
-        </label>
-        <p class="settings-hint">Chave gratuita em <strong>openweathermap.org/api</strong> — plano Free é suficiente</p>
-        <button class="btn-action" id="btn-save-weather">Salvar e atualizar clima</button>
-      </div>
-
-      <div class="settings-section">
-        <h3>Fotos</h3>
-        <p class="settings-hint">Selecione imagens do seu dispositivo. Ficam salvas localmente.</p>
-        <input type="file" id="cfg-photos" accept="image/*" multiple>
-        <div id="photos-preview"></div>
-        <button class="btn-action btn-danger" id="btn-clear-photos">Remover todas as fotos</button>
-        <label>Intervalo do slideshow
-          <select id="cfg-interval">
-            <option value="5000">5 segundos</option>
-            <option value="10000" selected>10 segundos</option>
-            <option value="20000">20 segundos</option>
-            <option value="30000">30 segundos</option>
-            <option value="60000">1 minuto</option>
-          </select>
-        </label>
-      </div>
-
-      <div class="settings-section">
-        <h3>Câmeras ao vivo</h3>
-        <p class="settings-hint">Adicione URLs de streams públicos (formato MJPEG, HLS ou imagem estática)</p>
-        <div id="cameras-list"></div>
-        <div class="cam-input-row">
-          <input type="text" id="cfg-cam-name" placeholder="Nome (ex: Paulista)">
-          <input type="text" id="cfg-cam-url" placeholder="URL do stream ou imagem">
-          <button class="btn-action" id="btn-add-cam">Adicionar</button>
-        </div>
-        <p class="settings-hint">Sugestões: câmeras de trânsito da CET-SP, webcams públicas, câmeras de praias da Prefeitura</p>
-      </div>
-
-      <div class="settings-section">
-        <h3>Display</h3>
-        <label class="toggle-label">
-          <span>Formato 24 horas</span>
-          <input type="checkbox" id="cfg-24h" checked>
-          <span class="toggle-track"></span>
-        </label>
-        <label class="toggle-label">
-          <span>Modo noturno automático</span>
-          <input type="checkbox" id="cfg-night-auto" checked>
-          <span class="toggle-track"></span>
-        </label>
-        <label>Início do modo noturno
-          <input type="time" id="cfg-night-start" value="22:00">
-        </label>
-        <label>Fim do modo noturno
-          <input type="time" id="cfg-night-end" value="07:00">
-        </label>
-        <label class="toggle-label">
-          <span>Manter tela ligada (evitar sleep)</span>
-          <input type="checkbox" id="cfg-wakelock" checked>
-          <span class="toggle-track"></span>
-        </label>
-      </div>
-
-      <div class="settings-section">
-        <button class="btn-action btn-fullscreen" id="btn-fullscreen">Tela cheia</button>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- CÂMERA EXPANDIDA -->
-  <div id="cam-expanded" class="hidden">
-    <div id="cam-expanded-inner">
-      <iframe id="cam-frame" src="" sandbox="allow-scripts allow-same-origin" allowfullscreen></iframe>
-      <img id="cam-img" src="" alt="câmera ao vivo">
-      <div id="cam-expanded-info">
-        <span id="cam-expanded-name"></span>
-        <button id="btn-close-cam">✕</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="js/app.js"></script>
+  <h1>Esta pasta é legada</h1>
+  <p>O app atual está na <strong>raiz do projeto</strong>, não em <code>smartdisplay/</code>.</p>
+  <p>Use:</p>
+  <pre>npm run dev</pre>
+  <p>Depois abra <a href="http://localhost:8080/">http://localhost:8080/</a></p>
+  <p>Redirecionando para a raiz…</p>
 </body>
 </html>
