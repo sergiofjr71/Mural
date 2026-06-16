@@ -3853,6 +3853,19 @@ async function bootstrapNativePhotoLibrary() {
 }
 
 // ─── BOOT ────────────────────────────────────
+function showDevBuildStamp() {
+  if (!['localhost', '127.0.0.1'].includes(location.hostname)) return;
+  const build = document.documentElement.dataset.muralBuild || '?';
+  let el = document.getElementById('mural-dev-stamp');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'mural-dev-stamp';
+    el.style.cssText = 'position:fixed;bottom:4px;left:4px;font-size:10px;color:rgba(255,255,255,0.4);z-index:9999;pointer-events:none;font-family:monospace';
+    document.body.appendChild(el);
+  }
+  el.textContent = `mural ${build}`;
+}
+
 async function init() {
   showDevBuildStamp();
   loadConfig();
