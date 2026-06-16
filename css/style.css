@@ -548,7 +548,7 @@ html[data-clock-tone="dark"] #clock-date {
 #weather-temp-big {
   font-size: clamp(36px, 8vw, 72px);
   font-weight: 100;
-  color: #fff;
+  color: #809BBC;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
@@ -733,7 +733,7 @@ body.night-mode #clock-date {
   color: rgba(140, 175, 210, 0.48);
 }
 body.night-mode #weather-temp-big {
-  color: #fff;
+  color: #809BBC;
   opacity: 1;
 }
 
