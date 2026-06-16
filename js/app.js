@@ -897,6 +897,7 @@ function isUsableImageSrc(src) {
       src.startsWith('blob:')
       || src.startsWith('data:image/')
       || /^https?:/i.test(src)
+      || src.startsWith('file://')
       || src.includes('_capacitor_file_')
       || src.startsWith('capacitor://')
     );
@@ -1822,7 +1823,7 @@ async function applySessionFolder(files, { name, gallerySource = false } = {}) {
 }
 
 async function getPhotoSourceCount() {
-  if (usesNativePhotoLibrary()) {
+  if (isNativePhotoLibraryMode()) {
     return PhotoLibraryService.getCount();
   }
   if (usesFolderSource()) {
@@ -1837,7 +1838,7 @@ async function hasPhotoSources() {
 }
 
 async function resolvePhotoAtIndex(index) {
-  if (usesNativePhotoLibrary()) {
+  if (isNativePhotoLibraryMode() && PhotoLibraryService.getCount() > 0) {
     PhotoLibraryService.setCurrentIndex(index);
     return PhotoLibraryService.resolvePhotoAtIndex(index, 2048);
   }
@@ -2795,7 +2796,14 @@ async function updateClockPhoto(skipAttempts = 0) {
 
   if (clockPhotoIndex >= count) clockPhotoIndex = 0;
   const currentIndex = clockPhotoIndex % count;
-  const { src } = await resolvePhotoAtIndex(currentIndex);
+  let src;
+  try {
+    ({ src } = await resolvePhotoAtIndex(currentIndex));
+  } catch (e) {
+    console.warn('resolvePhotoAtIndex:', e);
+    clockPhotoIndex = (clockPhotoIndex + 1) % count;
+    return updateClockPhoto(skipAttempts + 1);
+  }
   if (!isUsableImageSrc(src)) {
     clockPhotoIndex = (clockPhotoIndex + 1) % count;
     return updateClockPhoto(skipAttempts + 1);
@@ -3823,18 +3831,14 @@ async function bootstrapNativePhotoLibrary() {
   updateFolderPickerButtons();
   updatePhotoActionButtons();
 
-  const hasPersistedPhotos = PhotoLibraryService.getCount() > 0;
-  if (hasPersistedPhotos) {
-    clockPhotoIndex = PhotoLibraryService.getCurrentIndex();
-    await refreshPhotoViews();
-  }
-
   try {
-    const permission = await PhotoLibraryService.ensurePermission(!hasPersistedPhotos);
+    const permission = await PhotoLibraryService.ensurePermission(true);
     if (!permission.granted) {
       showToast('Permita o acesso à biblioteca de fotos nas Configurações do iOS');
       return;
     }
+
+    const hasPersistedPhotos = PhotoLibraryService.getCount() > 0;
 
     if (!hasPersistedPhotos || PhotoLibraryService.needsDailyRefresh()) {
       await refreshNativePhotoLibrary({
@@ -3844,11 +3848,37 @@ async function bootstrapNativePhotoLibrary() {
       return;
     }
 
-    if (!hasPersistedPhotos) {
-      showToast('Nenhuma foto encontrada na biblioteca');
+    clockPhotoIndex = PhotoLibraryService.getCurrentIndex();
+    await refreshPhotoViews();
+
+    const probe = await PhotoLibraryService.resolvePhotoAtIndex(clockPhotoIndex, 2048);
+    if (!isUsableImageSrc(probe.src)) {
+      console.warn('bootstrapNativePhotoLibrary: IDs persistidos inválidos, reescaneando biblioteca');
+      await refreshNativePhotoLibrary({ notify: false, reshuffle: false });
     }
   } catch (e) {
     console.warn('bootstrapNativePhotoLibrary:', e);
+    showToast('Não foi possível carregar as fotos da biblioteca');
+  }
+}
+
+async function recoverNativePhotosIfNeeded() {
+  if (!isNativePhotoLibraryMode()) return;
+  const img = document.getElementById('clock-photo-img');
+  const count = PhotoLibraryService.getCount();
+  if (!count || !img) return;
+  if (img.getAttribute('src') && img.style.opacity !== '0') return;
+  try {
+    await refreshPhotoViews();
+    const probe = await PhotoLibraryService.resolvePhotoAtIndex(
+      PhotoLibraryService.getCurrentIndex(),
+      2048,
+    );
+    if (!isUsableImageSrc(probe.src)) {
+      await refreshNativePhotoLibrary({ notify: false, reshuffle: false });
+    }
+  } catch (e) {
+    console.warn('recoverNativePhotosIfNeeded:', e);
   }
 }
 
@@ -3997,6 +4027,7 @@ async function init() {
       checkMidnightPlaylistRefresh();
       void updateFolderPermissionBanner();
       void updateLinkedFoldersPermissionLabels();
+      void recoverNativePhotosIfNeeded();
     }
   });
 

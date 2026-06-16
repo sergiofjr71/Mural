@@ -77,12 +77,14 @@ npm run sync:www
 # 3. Adicionar plataforma iOS (primeira vez)
 npx cap add ios
 
-# 4. Sincronizar plugin e assets
+# 4. Sincronizar plugin e assets (obrigatório após alterar js/, css/ ou index.html)
 npm run cap:sync
 
-# 5. Abrir no Xcode
+# 5. Abrir no Xcode, rebuild e reinstalar no iPad
 npm run cap:open
 ```
+
+**Se as fotos pararem de aparecer no iPad:** rode `npm run cap:sync`, rebuild no Xcode e reinstale. No app, abra Config → **Atualizar Biblioteca** ou confirme permissão de Fotos em Ajustes do iOS.
 
 ## Configuração iOS obrigatória
 

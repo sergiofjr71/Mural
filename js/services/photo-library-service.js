@@ -187,20 +187,27 @@ window.PhotoLibraryService = (function () {
     const plugin = getPlugin();
     if (!plugin || !id) return null;
 
-    const result = await plugin.getPhoto({
-      id,
-      maxWidth: maxWidth || 2048,
-      maxHeight: maxWidth || 2048,
-      quality: 0.82,
-    });
+    try {
+      const result = await plugin.getPhoto({
+        id,
+        maxWidth: maxWidth || 2048,
+        maxHeight: maxWidth || 2048,
+        quality: 0.82,
+      });
 
-    const webPath = result.webPath || result.path;
-    return {
-      id,
-      src: MuralPlatform.convertFileSrc(webPath),
-      width: result.width,
-      height: result.height,
-    };
+      const webPath = result?.webPath || result?.path;
+      if (!webPath) return null;
+
+      return {
+        id,
+        src: MuralPlatform.convertFileSrc(webPath),
+        width: result.width,
+        height: result.height,
+      };
+    } catch (e) {
+      console.warn('loadPhotoById:', id, e);
+      return null;
+    }
   }
 
   async function releaseCachedId(id) {

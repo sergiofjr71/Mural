@@ -149,20 +149,35 @@ public class PhotoLibraryPlugin: CAPPlugin, CAPBridgedPlugin {
         options.isNetworkAccessAllowed = true
         options.isSynchronous = false
 
+        let resolved = false
+
         imageManager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFit, options: options) { [weak self] image, info in
             guard let self = self else { return }
+            guard !resolved else { return }
 
             if let cancelled = info?[PHImageCancelledKey] as? Bool, cancelled {
+                resolved = true
+                call.reject("Photo load cancelled")
                 return
             }
             if let error = info?[PHImageErrorKey] as? Error {
+                resolved = true
                 call.reject("Failed to load photo: \(error.localizedDescription)")
                 return
             }
+
+            // iCloud / Photos pode entregar preview degradado antes da imagem final.
+            if let degraded = info?[PHImageResultIsDegradedKey] as? Bool, degraded {
+                return
+            }
+
             guard let image = image else {
+                resolved = true
                 call.reject("Failed to load photo")
                 return
             }
+
+            resolved = true
 
             self.ioQueue.async {
                 let safeId = self.safeFileName(for: id)
