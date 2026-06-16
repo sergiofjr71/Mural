@@ -9,7 +9,7 @@ import subprocess
 from urllib.parse import unquote, urlparse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PORT = int(os.environ.get('PORT', '8080'))
+PORT = int(os.environ.get('PORT', '3001'))
 BUILD_STAMP = os.environ.get('MURAL_BUILD', 'dev-root')
 ASSET_RE = re.compile(
     r'((?:href|src)=["\'])([^"\']+\.(?:css|js))(?:\?[^"\']*)?(["\'])',
@@ -128,6 +128,6 @@ if __name__ == '__main__':
     print(f'Mural DEV → http://localhost:{PORT}')
     print(f'Fonte: {ROOT}')
     print(f'Git: {git_head()}')
-    print('Diagnóstico: http://localhost:8080/__mural__/dev-status.json')
+    print(f'Diagnóstico: http://localhost:{PORT}/__mural__/dev-status.json')
     print('A pasta www/ é só para Capacitor. O navegador usa a raiz.')
     server.serve_forever()

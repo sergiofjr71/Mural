@@ -122,13 +122,13 @@ Em `Signing & Capabilities`, selecione seu Team e Bundle ID (`com.sergiofjr71.mu
 ```bash
 npm install
 npm run dev
-# Abra: http://localhost:8080
+# Abra: http://localhost:3001
 ```
 
 Confirme que está na versão certa:
 - Barra verde no topo: `DEV · project-root · git … · css m…`
 - Canto inferior esquerdo: `mural 20260617-live`
-- Diagnóstico: `npm run dev:doctor` ou http://localhost:8080/__mural__/dev-status.json
+- Diagnóstico: `npm run dev:doctor` ou http://localhost:3001/__mural__/dev-status.json
 
 | Comando | Uso |
 |---------|-----|

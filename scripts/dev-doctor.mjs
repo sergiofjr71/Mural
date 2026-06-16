@@ -1,6 +1,7 @@
 import { existsSync, statSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { join } from 'node:path';
+import { DEV_PORT, devOrigin } from './dev-port.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
 
@@ -47,18 +48,18 @@ if (indexWww.exists && indexRoot.exists && indexWww.mtime < indexRoot.mtime) {
 
 let serverOk = false;
 try {
-  const res = await fetch('http://localhost:8080/__mural__/dev-status.json', { cache: 'no-store' });
+  const res = await fetch(`${devOrigin()}/__mural__/dev-status.json`, { cache: 'no-store' });
   if (res.ok) {
     const data = await res.json();
     serverOk = data.source === 'project-root';
-    console.log(serverOk ? '✅ Servidor dev correto em http://localhost:8080' : '❌ Servidor respondeu mas não é project-root');
+    console.log(serverOk ? `✅ Servidor dev correto em ${devOrigin()}` : '❌ Servidor respondeu mas não é project-root');
     console.log(`   git=${data.git}  build=${data.build}`);
     for (const [name, info] of Object.entries(data.files || {})) {
       console.log(`   ${name}: mtime=${info.mtime} size=${info.size}`);
     }
   }
 } catch {
-  console.log('❌ Nenhum servidor em http://localhost:8080');
+  console.log(`❌ Nenhum servidor em ${devOrigin()}`);
 }
 
 console.log('');
@@ -67,9 +68,9 @@ if (!serverOk) {
   console.log('  1. cd', root);
   console.log('  2. npm install');
   console.log('  3. npm run dev');
-  console.log('  4. Abra http://localhost:8080 (não www/, não smartdisplay/)');
+  console.log(`  4. Abra ${devOrigin()} (não www/, não smartdisplay/)`);
   console.log('  5. Confirme barra verde no topo: "DEV · project-root"');
 } else {
-  console.log('Abra http://localhost:8080 e confirme a barra verde "DEV · project-root" no topo.');
+  console.log(`Abra ${devOrigin()} e confirme a barra verde "DEV · project-root" no topo.`);
 }
 console.log('');

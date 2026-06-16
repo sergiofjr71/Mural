@@ -3886,25 +3886,31 @@ function showDevSourceWarning(message, tone = 'error') {
   el.textContent = message;
 }
 
+function localDevUrl() {
+  const port = location.port || '3001';
+  return `http://localhost:${port}`;
+}
+
 async function verifyLocalDevSource() {
   const host = location.hostname;
   const isLocal = ['localhost', '127.0.0.1'].includes(host);
   const isGithubPages = host.endsWith('github.io') || host.endsWith('github.dev');
+  const devUrl = localDevUrl();
 
   if (isGithubPages) {
-    showDevSourceWarning('Você está em GitHub Pages (produção). Alterações locais só aparecem em http://localhost:8080 após npm run dev.', 'error');
+    showDevSourceWarning(`Você está em GitHub Pages (produção). Alterações locais só aparecem em ${devUrl} após npm run dev.`, 'error');
     return;
   }
 
   if (!isLocal) return;
 
   if (location.pathname.includes('/smartdisplay/') || location.pathname.endsWith('/smartdisplay')) {
-    showDevSourceWarning('Pasta smartdisplay/ é legado. Feche e abra http://localhost:8080/ (raiz do projeto).');
+    showDevSourceWarning(`Pasta smartdisplay/ é legado. Feche e abra ${devUrl}/ (raiz do projeto).`);
     return;
   }
 
   if (location.pathname.includes('/www/') || location.pathname.endsWith('/www')) {
-    showDevSourceWarning('Servindo a pasta www/ — use npm run dev e abra http://localhost:8080/ (raiz do projeto).');
+    showDevSourceWarning(`Servindo a pasta www/ — use npm run dev e abra ${devUrl}/ (raiz do projeto).`);
     return;
   }
 
@@ -3922,7 +3928,7 @@ async function verifyLocalDevSource() {
       showDevSourceWarning('CSS em cache antigo — recarregue com Cmd+Shift+R (hard refresh).');
     }
   } catch (_e) {
-    showDevSourceWarning('Servidor incorreto — na pasta do projeto rode: npm run dev  →  http://localhost:8080');
+    showDevSourceWarning(`Servidor incorreto — na pasta do projeto rode: npm run dev  →  ${devUrl}`);
   }
 }
 

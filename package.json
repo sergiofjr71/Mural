@@ -4,9 +4,9 @@
   "description": "Mural — porta-retrato digital para iPad (Capacitor + iOS)",
   "private": true,
   "scripts": {
-    "dev": "node scripts/watch-dev.mjs",
-    "dev:server": "node scripts/sync-www.mjs && python3 scripts/dev-server.py",
-    "dev:doctor": "node scripts/dev-doctor.mjs",
+    "dev": "PORT=3001 node scripts/watch-dev.mjs",
+    "dev:server": "PORT=3001 node scripts/sync-www.mjs && PORT=3001 python3 scripts/dev-server.py",
+    "dev:doctor": "PORT=3001 node scripts/dev-doctor.mjs",
     "sync:www": "node scripts/sync-www.mjs",
     "cap:sync": "npm run sync:www && npx cap sync ios",
     "cap:open": "npx cap open ios",

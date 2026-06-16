@@ -26,10 +26,11 @@ App de quadro inteligente para iPad antigo — relógio, clima, slideshow de fot
 ```bash
 npm install
 npm run dev
-# Acesse: http://localhost:8080
+# Acesse: http://localhost:3001
 ```
 
 **Importante (após migração Capacitor):**
+- Porta padrão: **3001** (compatível com preview do Cursor). Para outra porta: `PORT=8080 npm run dev`
 - Edite sempre os arquivos na **raiz** do projeto (`index.html`, `css/`, `js/`)
 - A pasta `www/` é gerada automaticamente só para o build iOS (`npm run cap:sync`)
 - **Não** use `python3 -m http.server` dentro de `www/`
