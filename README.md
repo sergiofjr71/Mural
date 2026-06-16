@@ -23,13 +23,17 @@ App de quadro inteligente para iPad antigo — relógio, clima, slideshow de fot
 
 ### Opção B — servidor local na sua rede
 
-Se você tem um computador sempre ligado na mesma rede Wi-Fi:
-
 ```bash
-# Na pasta do projeto, execute:
-python3 -m http.server 8080
-# Acesse no iPad: http://IP-DO-SEU-COMPUTADOR:8080
+npm install
+npm run dev
+# Acesse: http://localhost:8080
 ```
+
+**Importante (após migração Capacitor):**
+- Edite sempre os arquivos na **raiz** do projeto (`index.html`, `css/`, `js/`)
+- A pasta `www/` é gerada automaticamente só para o build iOS (`npm run cap:sync`)
+- **Não** use `python3 -m http.server` dentro de `www/`
+- No canto inferior esquerdo deve aparecer `mural 20260616-root` — confirma que está na versão certa
 
 **Atenção:** Service Worker (modo offline) só funciona via HTTPS ou localhost. Para uso local, use a Opção A.
 

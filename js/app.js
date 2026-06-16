@@ -3854,6 +3854,7 @@ async function bootstrapNativePhotoLibrary() {
 
 // ─── BOOT ────────────────────────────────────
 async function init() {
+  showDevBuildStamp();
   loadConfig();
   initCitiesFromStorage();
   loadFolderPlaylist();
