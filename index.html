@@ -8,7 +8,8 @@
   <script>
     (function purgeStaleCaches() {
       var host = location.hostname;
-      if (host !== 'localhost' && host !== '127.0.0.1') return;
+      var isProd = host.endsWith('github.io');
+      if (isProd) return;
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(function (regs) {
           regs.forEach(function (reg) { reg.unregister(); });
@@ -57,12 +58,21 @@
     #app {
       position: fixed;
       inset: 0;
+      display: flex;
+      flex-direction: column;
     }
-    .mode { display: none; }
-    #mode-clock.active { display: flex; }
+    .mode { display: none; flex: 1; min-height: 0; }
+    #mode-clock.active {
+      display: flex;
+      flex-direction: row;
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+      overflow: hidden;
+    }
   </style>
   <title>SmartDisplay</title>
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css" id="app-stylesheet" onerror="document.documentElement.classList.add('css-missing')">
   <script>
     (function () {
       var root = document.documentElement;
@@ -76,6 +86,21 @@
   </script>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <style>
+    html.css-missing body::before {
+      content: 'CSS não carregou — use npm run dev e abra http://localhost:3001 (Cmd+Shift+R)';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 99999;
+      padding: 12px;
+      background: #b42318;
+      color: #fff;
+      font: 600 14px/1.4 -apple-system, sans-serif;
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
 

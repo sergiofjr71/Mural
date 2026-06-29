@@ -4113,78 +4113,91 @@ async function initCapacitor() {
 }
 
 async function init() {
-  await initCapacitor();
-  loadConfig();
-  initCitiesFromStorage();
-  if (isCapacitor()) initNativeGalleryFolder();
-  loadFolderPlaylist();
-  loadHiddenFolderPhotos();
-  lastMidnightCheckDate = getTodayKey();
-
-  bindEvents();
-  bindClockPhotoMetaLayoutSync();
-  restorePseudoFullscreen();
-  if (isAppleMobileDevice() && nativeFullscreenActive()) {
-    void exitNativeFullscreen();
-  }
-  updateFullscreenFab();
-  initSettingsSections();
-  setupFolderPickerUi();
-  updateCityNav();
-  switchMode('clock');
-
-  const photoCol = document.getElementById('clock-photo-col');
-  if (photoCol) {
-    photoCol.style.height = '';
-    photoCol.style.marginLeft = '';
-  }
-
-  tickClock();
-  setInterval(tickClock, 1000);
-
   try {
-    await clearLegacyPhotoStorage();
-    if (isCapacitor()) {
-      // No Capacitor, galeria vem do plugin nativo — limpa dados antigos do IndexedDB/localStorage
-      await clearOldGalleryData();
-    } else if (isAppleMobileDevice()) {
-      await loadStoredGalleryFolders();
-    } else {
-      await loadStoredFolderHandles();
-    }
-    if (usesFolderSource()) {
-      await syncPersistedFolderPermissions();
-      const access = await ensureAllLinkedFolderPermissions({ interactive: false });
-      if (!access.ok) {
-        setupDeferredFolderPermissionGrant();
-      }
-      if (access.ok) {
-        await ensureFolderPlaylistForToday();
-      }
-    }
-    updatePhotoActionButtons();
-    await refreshPhotoViews();
-  } catch (e) {
-    console.warn('init folder photos:', e);
-    void updateFolderPermissionBanner();
-  }
+    await initCapacitor();
+    loadConfig();
+    initCitiesFromStorage();
+    if (isCapacitor()) initNativeGalleryFolder();
+    loadFolderPlaylist();
+    loadHiddenFolderPhotos();
+    lastMidnightCheckDate = getTodayKey();
 
-  scheduleMidnightFolderRescan();
-  setInterval(checkMidnightPlaylistRefresh, 60000);
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      checkMidnightPlaylistRefresh();
+    bindEvents();
+    bindClockPhotoMetaLayoutSync();
+    restorePseudoFullscreen();
+    if (isAppleMobileDevice() && nativeFullscreenActive()) {
+      void exitNativeFullscreen();
+    }
+    updateFullscreenFab();
+    initSettingsSections();
+    setupFolderPickerUi();
+    updateCityNav();
+    switchMode('clock');
+
+    const photoCol = document.getElementById('clock-photo-col');
+    if (photoCol) {
+      photoCol.style.height = '';
+      photoCol.style.marginLeft = '';
+    }
+
+    tickClock();
+    setInterval(tickClock, 1000);
+
+    try {
+      await clearLegacyPhotoStorage();
+      if (isCapacitor()) {
+        await clearOldGalleryData();
+      } else if (isAppleMobileDevice()) {
+        await loadStoredGalleryFolders();
+      } else {
+        await loadStoredFolderHandles();
+      }
+      if (usesFolderSource()) {
+        await syncPersistedFolderPermissions();
+        const access = await ensureAllLinkedFolderPermissions({ interactive: false });
+        if (!access.ok) {
+          setupDeferredFolderPermissionGrant();
+        }
+        if (access.ok) {
+          await ensureFolderPlaylistForToday();
+        }
+      }
+      updatePhotoActionButtons();
+      await refreshPhotoViews();
+    } catch (e) {
+      console.warn('init folder photos:', e);
       void updateFolderPermissionBanner();
-      void updateLinkedFoldersPermissionLabels();
     }
-  });
 
-  startWeatherTimer();
+    scheduleMidnightFolderRescan();
+    setInterval(checkMidnightPlaylistRefresh, 60000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        checkMidnightPlaylistRefresh();
+        void updateFolderPermissionBanner();
+        void updateLinkedFoldersPermissionLabels();
+      }
+    });
 
-  if (State.cfg.wakelock) requestWakeLock();
+    startWeatherTimer();
 
-  applyNightMode();
-  initAmbientLightSensor();
+    if (State.cfg.wakelock) requestWakeLock();
+
+    applyNightMode();
+    initAmbientLightSensor();
+    verifyBrowserStyles();
+  } catch (e) {
+    console.error('init falhou:', e);
+    showToast('Erro ao iniciar — recarregue com Cmd+Shift+R');
+  }
+}
+
+function verifyBrowserStyles() {
+  const host = location.hostname;
+  if (host !== 'localhost' && host !== '127.0.0.1') return;
+  const sheet = document.getElementById('app-stylesheet');
+  if (!sheet || sheet.sheet) return;
+  document.documentElement.classList.add('css-missing');
 }
 
 // ─── MODO NOTURNO ─────────────────────────────
@@ -4209,6 +4222,8 @@ function applyNightMode() {
 
 async function _startAmbientCamera() {
   if (_nightStream) return;
+  // No browser de desktop o sensor de câmera não existe — não escurecer o app inteiro
+  if (!isCapacitor() && !isAppleMobileDevice()) return;
   try {
     _nightStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment', width: { ideal: 32 }, height: { ideal: 32 } },
@@ -4247,8 +4262,10 @@ async function _startAmbientCamera() {
     if (State.cfg.wakelock) setTimeout(() => requestWakeLock(), 500);
   } catch (e) {
     console.warn('Câmera indisponível para sensor de luz:', e.message);
-    const app = document.getElementById('app');
-    if (app) app.style.filter = 'brightness(0.5)';
+    if (isCapacitor() || isAppleMobileDevice()) {
+      const app = document.getElementById('app');
+      if (app) app.style.filter = 'brightness(0.5)';
+    }
   }
 }
 
@@ -4287,7 +4304,8 @@ function shouldUseServiceWorker() {
   if (isCapacitor()) return false;
   const host = location.hostname;
   if (host === 'localhost' || host === '127.0.0.1') return false;
-  return host.endsWith('github.io') || host.endsWith('github.dev');
+  if (host.endsWith('.github.dev')) return false;
+  return host.endsWith('.github.io');
 }
 
 async function purgePwaCaches() {
