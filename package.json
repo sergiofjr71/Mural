@@ -10,9 +10,11 @@
     "sync:www": "node scripts/sync-www.mjs",
     "build": "rm -rf www && mkdir -p www && cp -r index.html css js icons manifest.json sw.js capacitor.config.json www/",
     "cap:add:ios": "npm run build && npx cap add ios",
-    "cap:sync": "npm run build && npx cap sync",
+    "cap:sync": "npm run build && npx cap sync ios && node scripts/pod-install.mjs",
     "cap:open": "npx cap open ios",
-    "cap:run": "npx cap run ios"
+    "cap:run": "npx cap run ios",
+    "ios:setup": "bash scripts/setup-cocoapods.sh",
+    "ios:pods": "node scripts/pod-install.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^7.0.0",

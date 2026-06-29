@@ -58,12 +58,34 @@ Configurações de exibição (`interval`, `transition`, etc.) continuam em `loc
 - Imagens redimensionadas (máx. 2048px) em JPEG
 - Cache em `Caches/mural-photo-cache/` no iOS
 
-## Pré-requisitos
+## Pré-requisitos (Mac)
 
-- macOS com Xcode 15+
-- Node.js 20+
-- CocoaPods (`sudo gem install cocoapods`)
+- macOS com **Xcode 15+**
+- **Node.js 20+**
+- **CocoaPods** (obrigatório — sem isso `cap sync` falha)
 - Conta Apple Developer (para instalar no iPad)
+
+### Instalar CocoaPods (primeira vez)
+
+Se aparecer `[error] CocoaPods is not installed`:
+
+```bash
+# Opção A — Homebrew (recomendado)
+brew install cocoapods
+
+# Opção B — Ruby gem
+sudo gem install cocoapods
+
+# Ou use o script do projeto (Mac)
+npm run ios:setup
+```
+
+Verifique:
+
+```bash
+pod --version
+# deve mostrar 1.x.x
+```
 
 ## Instalação e build
 
@@ -71,17 +93,26 @@ Configurações de exibição (`interval`, `transition`, etc.) continuam em `loc
 # 1. Instalar dependências
 npm install
 
-# 2. Sincronizar web assets para www/
-npm run sync:www
+# 2. Instalar CocoaPods (só na primeira vez no Mac)
+npm run ios:setup
 
-# 3. Adicionar plataforma iOS (primeira vez)
-npx cap add ios
-
-# 4. Sincronizar plugin e assets (obrigatório após alterar js/, css/ ou index.html)
+# 3. Sincronizar assets + pods + projeto iOS
 npm run cap:sync
 
-# 5. Abrir no Xcode, rebuild e reinstalar no iPad
+# 4. Abrir no Xcode e instalar no iPad
 npm run cap:open
+```
+
+No Xcode: selecione o **iPad** → **Run** (▶).
+
+**Atualizar o iPad após mudanças no código:**
+
+```bash
+git pull origin main
+npm install
+npm run cap:sync
+npm run cap:open
+# Run no Xcode
 ```
 
 **Se as fotos pararem de aparecer no iPad:** rode `npm run cap:sync`, rebuild no Xcode e reinstale. No app, abra Config → **Atualizar Biblioteca** ou confirme permissão de Fotos em Ajustes do iOS.
@@ -97,7 +128,7 @@ No Xcode, em `App/App/Info.plist`, adicionar:
 <string>O Mural precisa de acesso à biblioteca de fotos para exibir o slideshow.</string>
 ```
 
-Em `Signing & Capabilities`, selecione seu Team e Bundle ID (`com.sergiofjr71.mural`).
+Em `Signing & Capabilities`, selecione seu Team e Bundle ID (`com.serperformance.mural`).
 
 ## Etapas da migração
 
