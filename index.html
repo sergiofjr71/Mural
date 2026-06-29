@@ -1,10 +1,29 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-mural-build="20260629-root">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <script>
+    (function purgeStaleCaches() {
+      var host = location.hostname;
+      if (host !== 'localhost' && host !== '127.0.0.1') return;
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          regs.forEach(function (reg) { reg.unregister(); });
+        });
+      }
+      if ('caches' in window) {
+        caches.keys().then(function (keys) {
+          keys.forEach(function (key) { caches.delete(key); });
+        });
+      }
+    })();
     (function () {
       function appBaseHref() {
+        var host = location.hostname;
+        if (host === 'localhost' || host === '127.0.0.1') return '/';
         if (location.protocol === 'file:') {
           return location.href.split('?')[0].split('#')[0].replace(/[^/]*$/, '');
         }
@@ -31,7 +50,6 @@
     html, body {
       background: #030b18;
       color: #e8f0ff;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       margin: 0;
       height: 100%;
       overflow: hidden;
@@ -39,60 +57,9 @@
     #app {
       position: fixed;
       inset: 0;
-      display: flex;
-      flex-direction: column;
     }
-    .mode { display: none; flex: 1; min-height: 0; }
-    #mode-clock.active {
-      display: flex;
-      flex-direction: row;
-      flex: 1;
-      min-height: 0;
-      width: 100%;
-      max-width: 100%;
-      overflow: hidden;
-    }
-    .clock-wrapper {
-      padding: 0 28px 5px;
-      min-width: 0;
-      align-self: start;
-      height: fit-content;
-      width: fit-content;
-      align-items: center;
-    }
-    #clock-photo-col {
-      display: flex;
-      min-width: 0;
-      min-height: 0;
-      height: 100%;
-      padding: 0;
-    }
-    #clock-photo-frame {
-      flex: 1;
-      min-height: 160px;
-      position: relative;
-      background: #030b18;
-    }
-    #clock-time {
-      font-size: clamp(46px, calc(12vw - 10px), 110px);
-      font-weight: 100;
-      letter-spacing: -2px;
-      line-height: 1;
-    }
-    #clock-seconds {
-      font-size: clamp(18px, 4vw, 32px);
-      font-weight: 200;
-      color: #4a6080;
-      margin-top: 4px;
-    }
-    #clock-date {
-      font-size: clamp(9px, 4vw, 23px);
-      font-weight: 200;
-      letter-spacing: 2px;
-      line-height: 1;
-      color: #7a9cc0;
-      margin-top: 12px;
-    }
+    .mode { display: none; }
+    #mode-clock.active { display: flex; }
   </style>
   <title>SmartDisplay</title>
   <link rel="stylesheet" href="css/style.css">

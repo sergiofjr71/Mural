@@ -4283,9 +4283,30 @@ function _sampleAmbientLight() {
 function initAmbientLightSensor() { /* sensor arranca ao ligar o modo noturno */ }
 
 // ─── SERVICE WORKER ───────────────────────────
-// Service Worker não é usado no Capacitor (assets são locais)
-if ('serviceWorker' in navigator && !isCapacitor()) {
+function shouldUseServiceWorker() {
+  if (isCapacitor()) return false;
+  const host = location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1') return false;
+  return host.endsWith('github.io') || host.endsWith('github.dev');
+}
+
+async function purgePwaCaches() {
+  if ('serviceWorker' in navigator) {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map((reg) => reg.unregister()));
+  }
+  if ('caches' in window) {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((key) => caches.delete(key)));
+  }
+}
+
+if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
+    if (!shouldUseServiceWorker()) {
+      purgePwaCaches().catch((e) => console.warn('cache purge:', e));
+      return;
+    }
     navigator.serviceWorker.register(new URL('sw.js', window.location.href))
       .then((registration) => {
         console.log('SW registrado');

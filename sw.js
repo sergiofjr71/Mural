@@ -3,7 +3,7 @@
    Cache-first para HTML; CSS/JS direto no navegador
    ============================================ */
 
-const CACHE_NAME = 'smartdisplay-v141';
+const CACHE_NAME = 'smartdisplay-v142';
 
 const STATIC_ASSETS = [
   './',
@@ -60,6 +60,27 @@ self.addEventListener('fetch', (event) => {
     url.pathname.endsWith('.css') ||
     url.pathname.endsWith('.js')
   ) {
+    return;
+  }
+
+  // HTML: rede primeiro (evita layout desatualizado no cache)
+  if (
+    event.request.mode === 'navigate'
+    || event.request.destination === 'document'
+    || url.pathname.endsWith('.html')
+    || url.pathname.endsWith('/')
+  ) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
     return;
   }
 
