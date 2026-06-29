@@ -33,10 +33,9 @@ const State = {
     apiKey: '',
     interval: 10000,
     transition: 'fade',
+    kenburns: false,
     format24h: true,
-    nightAuto: true,
-    nightStart: '19:00',
-    nightEnd: '07:00',
+    nightMode: false,
     wakelock: true,
   }
 };
@@ -94,9 +93,12 @@ function _nativeDiag(status, identifier, detail) {
 
 let photoDbPromise = null;
 let clockPhotoObjectUrl = null;
+let clockPhotoActive = 'a'; // controla qual img está visível (A/B swap)
+let clockPhotoObjectUrls = { a: null, b: null };
 let slidePhotoObjectUrls = { a: null, b: null };
 let midnightRescanTimer = null;
 let lastMidnightCheckDate = '';
+// Estabilização do modo noturno
 let folderPickInProgress = false;
 let folderRescanInProgress = false;
 let photoPlaylistListVisible = false;
@@ -825,6 +827,14 @@ function revokeClockPhotoObjectUrl() {
   if (clockPhotoObjectUrl) {
     revokeObjectUrl(clockPhotoObjectUrl);
     clockPhotoObjectUrl = null;
+  }
+}
+
+function revokeClockPhotoInactive() {
+  const inactiveKey = clockPhotoActive === 'a' ? 'b' : 'a';
+  if (clockPhotoObjectUrls[inactiveKey]) {
+    revokeObjectUrl(clockPhotoObjectUrls[inactiveKey]);
+    clockPhotoObjectUrls[inactiveKey] = null;
   }
 }
 
@@ -2542,7 +2552,6 @@ function tickClock() {
   if (ct) ct.textContent = timeStr;
 
   // modo noturno
-  checkNightMode(now);
 
   if (State.weatherData?.hourly) {
     const hourlyStamp = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}`;
@@ -2553,18 +2562,6 @@ function tickClock() {
   }
 }
 
-function checkNightMode(now) {
-  if (!State.cfg.nightAuto) { document.body.classList.remove('night-mode'); return; }
-  const hm = now.getHours() * 60 + now.getMinutes();
-  const [sh, sm] = State.cfg.nightStart.split(':').map(Number);
-  const [eh, em] = State.cfg.nightEnd.split(':').map(Number);
-  const start = sh * 60 + sm;
-  const end = eh * 60 + em;
-  const isNight = start > end
-    ? (hm >= start || hm < end)
-    : (hm >= start && hm < end);
-  document.body.classList.toggle('night-mode', isNight);
-}
 
 // ─── CLIMA ───────────────────────────────────
 const WMO_ICONS = {
@@ -2946,15 +2943,16 @@ function setupClockNavAutoReveal() {
 }
 
 async function updateClockPhoto() {
-  const img = document.getElementById('clock-photo-img');
+  const imgA = document.getElementById('clock-photo-img-a');
+  const imgB = document.getElementById('clock-photo-img-b');
+  const frame = document.getElementById('clock-photo-frame');
   const empty = document.getElementById('clock-photo-empty');
-  if (!img) return;
+  if (!imgA || !imgB) return;
 
   const count = await getPhotoSourceCount();
   if (!count) {
-    revokeClockPhotoObjectUrl();
-    img.removeAttribute('src');
-    img.style.opacity = '0';
+    [imgA, imgB].forEach(i => { i.removeAttribute('src'); i.className = 'clock-photo-img'; });
+    if (frame) frame.className = '';
     if (empty) empty.style.display = 'flex';
     hideClockPhotoMeta();
     await updateClockPhotoNav();
@@ -2982,36 +2980,155 @@ async function updateClockPhoto() {
   }
 
   if (!src) {
-    revokeClockPhotoObjectUrl();
-    img.removeAttribute('src');
-    img.style.opacity = '0';
+    [imgA, imgB].forEach(i => { i.removeAttribute('src'); i.className = 'clock-photo-img'; });
+    if (frame) frame.className = '';
     if (empty) empty.style.display = 'flex';
     hideClockPhotoMeta();
     await updateClockPhotoNav();
     return;
   }
 
-  revokeClockPhotoObjectUrl();
-  if (src.startsWith('blob:')) {
-    clockPhotoObjectUrl = src;
+  const EFFECTS = ['fade', 'slide', 'zoom'];
+  let effect = State.cfg.transition || 'fade';
+  if (effect === 'random') effect = EFFECTS[Math.floor(Math.random() * EFFECTS.length)];
+  const kenburnsEnabled = !!State.cfg.kenburns;
+
+  const KB_VARIANTS = 8;
+  let lastKbVariant = -1;
+  function applyKenBurns(el) {
+    // Sorteia variante diferente da anterior
+    let v;
+    do { v = Math.floor(Math.random() * KB_VARIANTS) + 1; } while (v === lastKbVariant && KB_VARIANTS > 1);
+    lastKbVariant = v;
+    // Ciclo fixo de 10s, repete indefinidamente dentro do tempo de exibição
+    el.style.animation = `fx-kb-${v} 10000ms ease-in-out infinite alternate`;
   }
 
-  img.style.opacity = '0';
-  const loader = new Image();
+  const incomingKey = clockPhotoActive === 'a' ? 'b' : 'a';
+  const incoming = incomingKey === 'a' ? imgA : imgB;
+  const outgoing  = clockPhotoActive === 'a' ? imgA : imgB;
   const capturedIndex = resolvedIndex;
+
+  // Revoga blob da imagem que vai entrar (incoming, não mais necessário)
+  if (clockPhotoObjectUrls[incomingKey]) {
+    revokeObjectUrl(clockPhotoObjectUrls[incomingKey]);
+    clockPhotoObjectUrls[incomingKey] = null;
+  }
+  if (src.startsWith('blob:')) clockPhotoObjectUrls[incomingKey] = src;
+
+  const loader = new Image();
   loader.onload = () => {
-    img.src = src;
-    img.style.opacity = '1';
     if (empty) empty.style.display = 'none';
+
+    incoming.src = src;
+    incoming.className = 'clock-photo-img';
+    incoming.style.animation = '';
+    incoming.style.transform = '';
+    incoming.getAnimations().forEach(a => a.cancel());
+    outgoing.className = 'clock-photo-img active';
+
+    // Atualiza o estado imediatamente — antes do RAF para evitar race condition
+    clockPhotoActive = incomingKey;
     savePhotoIndex(capturedIndex);
     void updateClockPhotoMeta(capturedIndex);
+
+    const capturedOutKey = incomingKey === 'a' ? 'b' : 'a';
+
+    // Captura o transform atual da foto que sai (mid-kenburns) para evitar tranco
+    const outgoingTransform = getComputedStyle(outgoing).transform || 'none';
+    if (kenburnsEnabled) {
+      outgoing.getAnimations().forEach(a => a.cancel());
+      outgoing.style.transform = outgoingTransform;
+    }
+
+    if (effect === 'none') {
+      incoming.classList.add('active');
+      outgoing.classList.remove('active');
+      outgoing.style.transform = '';
+      if (frame) frame.className = '';
+      if (kenburnsEnabled) applyKenBurns(incoming);
+      return;
+    }
+
+    if (effect === 'fade') {
+      const FADE_MS = 2500;
+      incoming.classList.add('active');
+      incoming.animate([{ opacity: 0 }, { opacity: 1 }], { duration: FADE_MS, easing: 'ease', fill: 'none' });
+      outgoing.classList.remove('active');
+      outgoing.animate([{ opacity: 1 }, { opacity: 0 }], { duration: FADE_MS, easing: 'ease', fill: 'none' });
+      setTimeout(() => {
+        outgoing.style.transform = '';
+        outgoing.style.animation = '';
+        if (frame) frame.className = '';
+        if (kenburnsEnabled) applyKenBurns(incoming);
+        if (clockPhotoObjectUrls[capturedOutKey]) {
+          revokeObjectUrl(clockPhotoObjectUrls[capturedOutKey]);
+          clockPhotoObjectUrls[capturedOutKey] = null;
+        }
+      }, FADE_MS + 100);
+      return;
+    }
+
+    // Zoom sequencial: zoom out da foto atual (do ponto atual), depois zoom in da nova
+    if (effect === 'zoom') {
+      const ZOOM_MS = 1500;
+      if (frame) frame.className = 'fx-zoom';
+      requestAnimationFrame(() => {
+        outgoing.animate(
+          [{ transform: outgoingTransform, opacity: 1 }, { transform: 'scale(0.9)', opacity: 0 }],
+          { duration: ZOOM_MS, easing: 'ease', fill: 'forwards' }
+        );
+        setTimeout(() => {
+          outgoing.style.transform = '';
+          outgoing.style.animation = '';
+          outgoing.getAnimations().forEach(a => a.cancel());
+          outgoing.classList.remove('active');
+          incoming.classList.add('active', 'cp-in');
+          setTimeout(() => {
+            incoming.classList.remove('cp-in');
+            if (frame) frame.className = '';
+            if (kenburnsEnabled) applyKenBurns(incoming);
+            if (clockPhotoObjectUrls[capturedOutKey]) {
+              revokeObjectUrl(clockPhotoObjectUrls[capturedOutKey]);
+              clockPhotoObjectUrls[capturedOutKey] = null;
+            }
+          }, ZOOM_MS);
+        }, ZOOM_MS);
+      });
+      return;
+    }
+
+    // Slide: randomiza direção a cada transição
+    const SLIDE_DIRS = ['right', 'left', 'up', 'down'];
+    const slideDir = SLIDE_DIRS[Math.floor(Math.random() * SLIDE_DIRS.length)];
+    const frameClass = `fx-slide-${slideDir}`;
+    const slideEndTransform = { right: 'translateX(-100%)', left: 'translateX(100%)', up: 'translateY(100%)', down: 'translateY(-100%)' }[slideDir];
+    if (frame) frame.className = frameClass;
+
+    requestAnimationFrame(() => {
+      incoming.classList.add('active', 'cp-in');
+      outgoing.animate(
+        [{ transform: outgoingTransform }, { transform: slideEndTransform }],
+        { duration: 1500, easing: 'ease', fill: 'forwards' }
+      );
+
+      setTimeout(() => {
+        outgoing.style.transform = '';
+        outgoing.style.animation = '';
+        outgoing.getAnimations().forEach(a => a.cancel());
+        outgoing.classList.remove('active');
+        incoming.classList.remove('cp-in');
+        if (frame) frame.className = '';
+        if (kenburnsEnabled) applyKenBurns(incoming);
+        if (clockPhotoObjectUrls[capturedOutKey]) {
+          revokeObjectUrl(clockPhotoObjectUrls[capturedOutKey]);
+          clockPhotoObjectUrls[capturedOutKey] = null;
+        }
+      }, 1500);
+    });
   };
   loader.onerror = () => {
-    // src foi resolvido mas img não renderizou (ex: HEIC inválido) — avança 1
     console.warn('clock photo img render failed, advancing');
-    revokeClockPhotoObjectUrl();
-    img.removeAttribute('src');
-    img.style.opacity = '0';
     hideClockPhotoMeta();
     clockPhotoIndex = (capturedIndex + 1) % count;
     savePhotoIndex(clockPhotoIndex);
@@ -3085,7 +3202,7 @@ function showSlideWithSrc(index, src, total) {
     slidePhotoObjectUrls[incomingKey] = null;
   }
 
-  const EFFECTS = ['fade', 'slide', 'zoom', 'kenburns'];
+  const EFFECTS = ['fade', 'slide', 'zoom'];
   let effect = State.cfg.transition || 'fade';
   if (effect === 'random') effect = EFFECTS[Math.floor(Math.random() * EFFECTS.length)];
   if (effect === 'none') {
@@ -3107,11 +3224,11 @@ function showSlideWithSrc(index, src, total) {
     incoming.classList.add('active', 'slide-in');
     outgoing.classList.add('slide-out');
 
-    const duration = effect === 'kenburns' ? 1000 : 700;
+    const duration = 700;
     setTimeout(() => {
       outgoing.classList.remove('active', 'slide-out');
       incoming.classList.remove('slide-in');
-      container.className = effect === 'kenburns' ? 'fx-kenburns' : '';
+      container.className = '';
     }, duration);
   });
 
@@ -3251,10 +3368,9 @@ function openSettings() {
   const cfg = State.cfg;
   document.getElementById('cfg-interval').value = cfg.interval;
   document.getElementById('cfg-transition').value = cfg.transition || 'fade';
+  document.getElementById('cfg-kenburns').checked = !!cfg.kenburns;
   document.getElementById('cfg-24h').checked = cfg.format24h;
-  document.getElementById('cfg-night-auto').checked = cfg.nightAuto;
-  document.getElementById('cfg-night-start').value = cfg.nightStart;
-  document.getElementById('cfg-night-end').value = cfg.nightEnd;
+  document.getElementById('cfg-night-mode').checked = !!cfg.nightMode;
   document.getElementById('cfg-wakelock').checked = cfg.wakelock;
 
   renderSettingsCitiesList();
@@ -3314,12 +3430,12 @@ function initSettingsSections() {
 
 function saveDisplayConfig() {
   State.cfg.format24h = document.getElementById('cfg-24h').checked;
-  State.cfg.nightAuto = document.getElementById('cfg-night-auto').checked;
-  State.cfg.nightStart = document.getElementById('cfg-night-start').value;
-  State.cfg.nightEnd = document.getElementById('cfg-night-end').value;
+  State.cfg.nightMode = document.getElementById('cfg-night-mode').checked;
   State.cfg.wakelock = document.getElementById('cfg-wakelock').checked;
+  applyNightMode();
   State.cfg.interval = parseInt(document.getElementById('cfg-interval').value);
   State.cfg.transition = document.getElementById('cfg-transition').value;
+  State.cfg.kenburns = document.getElementById('cfg-kenburns').checked;
   saveConfig();
   if (State.cfg.wakelock) requestWakeLock();
   else releaseWakeLock();
@@ -3914,6 +4030,19 @@ function bindEvents() {
     saveConfig();
   });
 
+  document.getElementById('cfg-kenburns').addEventListener('change', e => {
+    State.cfg.kenburns = e.target.checked;
+    saveConfig();
+  });
+
+  document.getElementById('cfg-night-mode').addEventListener('change', e => {
+    State.cfg.nightMode = e.target.checked;
+    // Remove filter inline ao desligar para devolver controle ao CSS
+    if (!e.target.checked) document.getElementById('app').style.filter = '';
+    applyNightMode();
+    saveConfig();
+  });
+
   // câmeras
   document.getElementById('btn-add-cam')?.addEventListener('click', () => {
     const name = document.getElementById('cfg-cam-name').value.trim();
@@ -4053,7 +4182,105 @@ async function init() {
   startWeatherTimer();
 
   if (State.cfg.wakelock) requestWakeLock();
+
+  applyNightMode();
+  initAmbientLightSensor();
 }
+
+// ─── MODO NOTURNO ─────────────────────────────
+let _nightStream        = null;
+let _nightVideo         = null;
+let _nightCanvas        = null;
+let _nightCtx           = null;
+let _nightTimer         = null;
+let _nightWakeLockTimer = null;
+
+function applyNightMode() {
+  const enabled = !!State.cfg.nightMode;
+  document.body.classList.toggle('night-mode', enabled);
+  if (enabled) {
+    _startAmbientCamera();
+  } else {
+    _stopAmbientCamera();
+    const app = document.getElementById('app');
+    if (app) app.style.filter = '';
+  }
+}
+
+async function _startAmbientCamera() {
+  if (_nightStream) return;
+  try {
+    _nightStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 32 }, height: { ideal: 32 } },
+      audio: false
+    });
+
+    // Vídeo precisa estar no DOM para receber frames no iOS
+    _nightVideo = document.createElement('video');
+    _nightVideo.srcObject = _nightStream;
+    _nightVideo.playsInline = true;
+    _nightVideo.muted = true;
+    _nightVideo.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;top:-9999px';
+    document.body.appendChild(_nightVideo);
+
+    await new Promise((resolve, reject) => {
+      _nightVideo.oncanplay = resolve;
+      _nightVideo.onerror = reject;
+      _nightVideo.play().catch(reject);
+      setTimeout(reject, 5000); // timeout 5s
+    });
+
+    _nightCanvas = document.createElement('canvas');
+    _nightCanvas.width = 16;
+    _nightCanvas.height = 16;
+    _nightCtx = _nightCanvas.getContext('2d', { willReadFrequently: true });
+
+    _sampleAmbientLight();
+    // Amostra luz a cada 3s + re-solicita WakeLock a cada 30s (câmera pode liberar o lock)
+    _nightTimer = setInterval(() => {
+      _sampleAmbientLight();
+    }, 3000);
+    _nightWakeLockTimer = setInterval(() => {
+      if (State.cfg.wakelock) requestWakeLock();
+    }, 30000);
+    // Re-solicita imediatamente após câmera iniciar (iOS pode ter liberado o lock)
+    if (State.cfg.wakelock) setTimeout(() => requestWakeLock(), 500);
+  } catch (e) {
+    console.warn('Câmera indisponível para sensor de luz:', e.message);
+    const app = document.getElementById('app');
+    if (app) app.style.filter = 'brightness(0.5)';
+  }
+}
+
+function _stopAmbientCamera() {
+  if (_nightTimer) { clearInterval(_nightTimer); _nightTimer = null; }
+  if (_nightWakeLockTimer) { clearInterval(_nightWakeLockTimer); _nightWakeLockTimer = null; }
+  if (_nightStream) { _nightStream.getTracks().forEach(t => t.stop()); _nightStream = null; }
+  if (_nightVideo && _nightVideo.parentNode) _nightVideo.parentNode.removeChild(_nightVideo);
+  _nightVideo = null;
+  _nightCanvas = null;
+  _nightCtx = null;
+}
+
+function _sampleAmbientLight() {
+  if (!State.cfg.nightMode || !_nightCtx || !_nightVideo) return;
+  try {
+    _nightCtx.drawImage(_nightVideo, 0, 0, 16, 16);
+    const pixels = _nightCtx.getImageData(0, 0, 16, 16).data;
+    let sum = 0;
+    for (let i = 0; i < pixels.length; i += 4) {
+      sum += pixels[i] * 0.2126 + pixels[i + 1] * 0.7152 + pixels[i + 2] * 0.0722;
+    }
+    const avgLum = sum / (16 * 16); // 0–255
+    // escuro (0) → brightness 0.08 ; claro (80+) → brightness 0.65
+    const t = Math.min(1, avgLum / 80);
+    const brightness = (0.08 + t * 0.57).toFixed(2);
+    const app = document.getElementById('app');
+    if (app) app.style.filter = `brightness(${brightness})`;
+  } catch (e) { /* frame ainda não disponível */ }
+}
+
+function initAmbientLightSensor() { /* sensor arranca ao ligar o modo noturno */ }
 
 // ─── SERVICE WORKER ───────────────────────────
 // Service Worker não é usado no Capacitor (assets são locais)

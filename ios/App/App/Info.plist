@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Mural</string>
+	<string>Mural</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -46,10 +46,10 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>O Mural exibe suas fotos como um porta-retrato digital.</string>
+	<string>O Mural precisa acessar suas fotos para exibir o slideshow.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>O Mural precisa de acesso à biblioteca de fotos para exibir o slideshow.</string>
-	<key>UIStatusBarStyle</key>
-	<string>UIStatusBarStyleLightContent</string>
+	<string>O Mural precisa acessar suas fotos para exibir o slideshow.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>O Mural usa a câmera para detectar a luminosidade do ambiente e ajustar o brilho da tela automaticamente no modo noturno.</string>
 </dict>
 </plist>

@@ -125,27 +125,54 @@ html, body {
   min-width: 0;
   min-height: 180px;
   height: 100%;
-  border-radius: 0;
+  border-radius: 16px;
   overflow: hidden;
   background: var(--bg);
   position: relative;
 }
 
-#clock-photo-img {
+.clock-photo-img {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
   object-position: center center;
-  transition: opacity 1s ease;
   pointer-events: none;
   z-index: 0;
+  opacity: 0;
 }
 
-#clock-photo-img:not([src]) {
-  display: none;
-}
+.clock-photo-img.active { opacity: 1; }
+.clock-photo-img:not([src]) { display: none; }
+
+/* Fade: usa transition para crossfade suave simultâneo */
+#clock-photo-frame.fx-fade .clock-photo-img { transition: opacity 0.8s ease; }
+
+/* Outros efeitos: usa keyframes do slideshow */
+/* Slide com 4 direções — classe aplicada dinamicamente via JS */
+#clock-photo-frame.fx-slide-right .clock-photo-img.cp-in  { animation: fx-slide-from-right 1.5s ease forwards; }
+#clock-photo-frame.fx-slide-right .clock-photo-img.cp-out { animation: fx-slide-to-left   1.5s ease forwards; }
+#clock-photo-frame.fx-slide-left  .clock-photo-img.cp-in  { animation: fx-slide-from-left  1.5s ease forwards; }
+#clock-photo-frame.fx-slide-left  .clock-photo-img.cp-out { animation: fx-slide-to-right   1.5s ease forwards; }
+#clock-photo-frame.fx-slide-up    .clock-photo-img.cp-in  { animation: fx-slide-from-top   1.5s ease forwards; }
+#clock-photo-frame.fx-slide-up    .clock-photo-img.cp-out { animation: fx-slide-to-bottom  1.5s ease forwards; }
+#clock-photo-frame.fx-slide-down  .clock-photo-img.cp-in  { animation: fx-slide-from-bottom 1.5s ease forwards; }
+#clock-photo-frame.fx-slide-down  .clock-photo-img.cp-out { animation: fx-slide-to-top     1.5s ease forwards; }
+
+@keyframes fx-slide-from-right  { from { transform:translateX(100%) } to { transform:translateX(0) } }
+@keyframes fx-slide-to-left     { from { transform:translateX(0) }    to { transform:translateX(-100%) } }
+@keyframes fx-slide-from-left   { from { transform:translateX(-100%) } to { transform:translateX(0) } }
+@keyframes fx-slide-to-right    { from { transform:translateX(0) }    to { transform:translateX(100%) } }
+@keyframes fx-slide-from-top    { from { transform:translateY(-100%) } to { transform:translateY(0) } }
+@keyframes fx-slide-to-bottom   { from { transform:translateY(0) }    to { transform:translateY(100%) } }
+@keyframes fx-slide-from-bottom { from { transform:translateY(100%) } to { transform:translateY(0) } }
+@keyframes fx-slide-to-top      { from { transform:translateY(0) }    to { transform:translateY(-100%) } }
+#clock-photo-frame.fx-zoom .clock-photo-img.cp-in  { animation: fx-cp-zoom-in  1.5s ease forwards; }
+#clock-photo-frame.fx-zoom .clock-photo-img.cp-out { animation: fx-cp-zoom-out 1.5s ease forwards; }
+@keyframes fx-cp-zoom-in  { from { transform:scale(1.12); opacity:0 } to { transform:scale(1);    opacity:1 } }
+@keyframes fx-cp-zoom-out { from { transform:scale(1);    opacity:1 } to { transform:scale(0.9); opacity:0 } }
+/* Ken Burns aplicado via JS diretamente no elemento (animation inline) */
 
 .slide-img:not([src]) {
   display: none;
@@ -192,7 +219,7 @@ html, body {
 }
 
 .clock-photo-meta-line {
-  font-size: 13px;
+  font-size: 21px;
   font-weight: 500;
   color: rgba(232, 240, 255, 0.94);
   line-height: 1.35;
@@ -215,7 +242,7 @@ html, body {
 
 .clock-photo-meta-line + .clock-photo-meta-line {
   margin-top: 3px;
-  font-size: 12px;
+  font-size: 19px;
   font-weight: 400;
   color: rgba(232, 240, 255, 0.78);
 }
@@ -232,7 +259,7 @@ html, body {
 }
 
 #clock-photo-meta-index {
-  font-size: 11px;
+  font-size: 18px;
   font-weight: 300;
   color: rgba(232, 240, 255, 0.45);
   letter-spacing: 0.5px;
@@ -382,7 +409,7 @@ body.clock-nav-visible .clock-photo-nav:not(:disabled) .clock-photo-nav-icon,
   font-size: clamp(52px, calc(12vw + 6px), 136px);
   font-weight: 100;
   letter-spacing: -2px;
-  color: var(--text-dim);
+  color: #ffffff;
   line-height: 1;
   font-variant-numeric: lining-nums tabular-nums;
 }
@@ -390,7 +417,7 @@ body.clock-nav-visible .clock-photo-nav:not(:disabled) .clock-photo-nav-icon,
 #clock-seconds {
   font-size: clamp(18px, 4vw, 36px);
   font-weight: 200;
-  color: var(--text-dim);
+  color: var(--text-mid);
   letter-spacing: 2px;
   margin-top: 4px;
   font-variant-numeric: tabular-nums;
@@ -631,8 +658,10 @@ body.clock-nav-visible .clock-photo-nav:not(:disabled) .clock-photo-nav-icon,
   font-variant-numeric: tabular-nums;
 }
 
-body.night-mode #clock-time { color: #4a7aaa; opacity: 0.6; }
-body.night-mode #weather-temp-big { color: #809BBC; opacity: 0.7; }
+/* Modo noturno — transição suave de 5s; brightness definido via JS pelo sensor de câmera */
+#app {
+  transition: filter 5s ease;
+}
 
 @media (max-width: 720px) {
   #mode-clock {
@@ -1176,6 +1205,23 @@ input[type="file"] {
   cursor: pointer;
 }
 .toggle-label input[type="checkbox"] { display: none; }
+
+.cfg-inline {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--fg);
+}
+.cfg-inline input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
 .toggle-track {
   width: 44px;
   height: 26px;
@@ -2004,10 +2050,16 @@ label.btn-choose-photo-folder {
 .fx-kenburns .slide-img.active { animation: fx-kenburns 8s ease-in-out infinite alternate; }
 .fx-kenburns .slide-img.slide-in  { animation: fx-fade-in 1s ease forwards, fx-kenburns 8s ease-in-out infinite alternate; }
 .fx-kenburns .slide-img.slide-out { animation: fx-fade-out 1s ease forwards; }
-@keyframes fx-kenburns {
-  from { transform: scale(1)    translateX(0)    translateY(0); }
-  to   { transform: scale(1.08) translateX(-2%)  translateY(-1%); }
-}
+/* Ken Burns — 10 variantes, todas partem de scale(1) para evitar tranco */
+/* Escala maior e translações maiores para que a direção seja perceptível */
+@keyframes fx-kb-1 { from { transform: scale(1) translateX(0)   translateY(0);  } to { transform: scale(1.15) translateX(-5%) translateY(-4%); } }
+@keyframes fx-kb-2 { from { transform: scale(1) translateX(0)   translateY(0);  } to { transform: scale(1.15) translateX( 5%) translateY(-4%); } }
+@keyframes fx-kb-3 { from { transform: scale(1) translateX(0)   translateY(0);  } to { transform: scale(1.15) translateX(-5%) translateY( 4%); } }
+@keyframes fx-kb-4 { from { transform: scale(1) translateX(0)   translateY(0);  } to { transform: scale(1.15) translateX( 5%) translateY( 4%); } }
+@keyframes fx-kb-5 { from { transform: scale(1) translateX(0)   translateY(0);  } to { transform: scale(1.12) translateX(-7%) translateY(0);   } }
+@keyframes fx-kb-6 { from { transform: scale(1) translateX(0)   translateY(0);  } to { transform: scale(1.12) translateX( 7%) translateY(0);   } }
+@keyframes fx-kb-7 { from { transform: scale(1) translateX(0)   translateY(0);  } to { transform: scale(1.12) translateX(0)   translateY(-5%); } }
+@keyframes fx-kb-8 { from { transform: scale(1) translateX(0)   translateY(0);  } to { transform: scale(1.12) translateX(0)   translateY( 5%); } }
 
 /* seleção de fotos */
 .photo-source-row {

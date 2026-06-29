@@ -157,7 +157,8 @@
       </div>
       <div id="clock-photo-col">
         <div id="clock-photo-frame">
-          <img id="clock-photo-img" alt="">
+          <img id="clock-photo-img-a" class="clock-photo-img" alt="">
+          <img id="clock-photo-img-b" class="clock-photo-img" alt="">
           <div id="clock-photo-empty">Configurar Fotos</div>
           <div id="clock-photo-meta" class="clock-photo-meta hidden" aria-live="polite">
             <div id="clock-photo-meta-location" class="clock-photo-meta-line clock-photo-meta-location">
@@ -287,9 +288,12 @@
             <option value="fade">Fade (dissolver)</option>
             <option value="slide">Deslizar</option>
             <option value="zoom">Zoom in</option>
-            <option value="kenburns">Ken Burns</option>
             <option value="random">Randômico</option>
           </select>
+        </label>
+        <label class="cfg-inline">
+          <input type="checkbox" id="cfg-kenburns">
+          Ken Burns (movimento suave nas fotos)
         </label>
         </div>
       </div>
@@ -305,17 +309,13 @@
           <input type="checkbox" id="cfg-24h" checked>
           <span class="toggle-track"></span>
         </label>
+
         <label class="toggle-label">
-          <span>Modo noturno automático</span>
-          <input type="checkbox" id="cfg-night-auto" checked>
+          <span>Modo noturno</span>
+          <input type="checkbox" id="cfg-night-mode">
           <span class="toggle-track"></span>
         </label>
-        <label>Início do modo noturno
-          <input type="time" id="cfg-night-start" value="19:00">
-        </label>
-        <label>Fim do modo noturno
-          <input type="time" id="cfg-night-end" value="07:00">
-        </label>
+        <p class="settings-hint">Quando ativado, ajusta automaticamente a luminosidade conforme o ambiente (5s de transição).</p>
         <label class="toggle-label">
           <span>Manter tela ligada (evitar sleep)</span>
           <input type="checkbox" id="cfg-wakelock" checked>

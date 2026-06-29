@@ -1,0 +1,29 @@
+{
+  "appId": "com.serperformance.mural",
+  "appName": "Mural",
+  "webDir": "www",
+  "server": {
+    "allowNavigation": [
+      "api.open-meteo.com",
+      "geocoding-api.open-meteo.com",
+      "nominatim.openstreetmap.org",
+      "api.openweathermap.org"
+    ]
+  },
+  "ios": {
+    "backgroundColor": "#030b18",
+    "contentInset": "always",
+    "preferredContentMode": "mobile",
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "plugins": {
+    "KeepAwake": {
+      "keepAwake": true
+    },
+    "StatusBar": {
+      "style": "Dark",
+      "backgroundColor": "#030b18",
+      "overlaysWebView": true
+    }
+  }
+}
