@@ -4,6 +4,10 @@
   "description": "Relógio, clima, fotos e câmeras ao vivo para iPad",
   "private": true,
   "scripts": {
+    "dev": "node scripts/watch-dev.mjs",
+    "dev:server": "node scripts/sync-www.mjs && python3 scripts/dev-server.py",
+    "dev:doctor": "node scripts/dev-doctor.mjs",
+    "sync:www": "node scripts/sync-www.mjs",
     "build": "rm -rf www && mkdir -p www && cp -r index.html css js icons manifest.json sw.js capacitor.config.json www/",
     "cap:add:ios": "npm run build && npx cap add ios",
     "cap:sync": "npm run build && npx cap sync",
