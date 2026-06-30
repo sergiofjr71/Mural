@@ -152,7 +152,7 @@
           <img id="clock-photo-img-a" class="clock-photo-img" alt="">
           <img id="clock-photo-img-b" class="clock-photo-img" alt="">
           <div id="clock-photo-empty">Configurar Fotos</div>
-          <div id="clock-photo-meta" class="clock-photo-meta hidden" aria-live="polite">
+          <div id="clock-photo-meta" class="clock-photo-meta no-photos" aria-live="polite">
             <div id="clock-photo-meta-location" class="clock-photo-meta-line clock-photo-meta-location">
               <span class="clock-photo-meta-kicker">Local</span><span id="clock-photo-meta-location-value"></span>
             </div>
@@ -244,14 +244,15 @@
           <span class="settings-section-chevron" aria-hidden="true">▾</span>
         </button>
         <div id="settings-section-photos" class="settings-section-body">
-        <p class="settings-hint settings-hint--desktop-folder">Inclua <strong>várias pastas</strong> locais. O app grava o acesso à pasta (nome e permissão) — nada é importado. À meia-noite relê as pastas e monta uma nova lista aleatória de fotos.</p>
-        <p class="settings-hint settings-hint--ios">No iPad/iPhone use <strong>Incluir fotos da galeria</strong>. Toque em <strong>Selecionar</strong> (canto superior direito) e marque várias fotos de uma vez — ou <strong>Selecionar tudo</strong> em um álbum. As fotos ficam salvas neste dispositivo; use <strong>Adicionar mais fotos</strong> para incluir outras depois.</p>
+        <p class="settings-hint settings-hint--desktop-folder">Selecione a <strong>pasta local</strong> com as fotos. O app grava o acesso à pasta — nada é importado. À meia-noite relê a pasta e monta uma nova lista aleatória.</p>
+        <p class="settings-hint settings-hint--ios settings-hint--ios-picker">Toque em <strong>Selecionar galeria</strong> para escolher as fotos do iPad. Para substituir a galeria, toque novamente e selecione as novas fotos.</p>
         <div class="photo-folder-row" id="photo-folder-row">
-          <button type="button" class="btn-action folder-picker-btn" id="btn-add-photo-folder-native" hidden>Incluir pasta</button>
-          <label for="cfg-photo-folder-fallback" class="btn-action folder-picker-btn" id="btn-add-photo-folder-fallback">Incluir pasta</label>
-          <label for="cfg-photo-gallery-ios" class="btn-action folder-picker-btn" id="btn-add-photo-gallery-ios" hidden>Incluir fotos da galeria</label>
+          <button type="button" class="btn-action folder-picker-btn" id="btn-add-photo-folder-native" hidden>Selecionar pasta</button>
+          <label for="cfg-photo-folder-fallback" class="btn-action folder-picker-btn" id="btn-add-photo-folder-fallback">Selecionar pasta</label>
+          <label for="cfg-photo-gallery-ios" class="btn-action folder-picker-btn" id="btn-add-photo-gallery-ios" hidden>Selecionar galeria</label>
+          <div id="gallery-build-progress" class="gallery-build-progress hidden" aria-live="polite" aria-label="Progresso"></div>
           <div id="linked-folders-panel" class="linked-folders-panel">
-            <p id="linked-folders-empty" class="linked-folders-empty settings-hint">Inclua uma ou mais pastas para exibir fotos.</p>
+            <p id="linked-folders-empty" class="linked-folders-empty settings-hint">Selecione a galeria de fotos para exibir no app.</p>
             <ul id="linked-folders-list" class="linked-folders-list" aria-live="polite"></ul>
           </div>
         </div>
@@ -263,8 +264,8 @@
           <button type="button" class="btn-action btn-action--compact photo-actions-btn" id="btn-show-photo-list" disabled>Lista de Fotos</button>
           <button type="button" class="btn-action btn-action--compact photo-actions-btn" id="btn-rescan-folders" disabled>Releitura das pastas</button>
         </div>
-        <button type="button" class="btn-action btn-action--compact platform-ios-only" id="btn-change-photo-source" style="display:none">Alterar fonte de fotos</button>
-        <div id="photo-playlist-panel" class="photo-playlist-panel hidden" aria-live="polite"></div>
+<div id="photo-playlist-panel" class="photo-playlist-panel hidden" aria-live="polite"></div>
+        <hr class="settings-divider">
         <label>Intervalo do slideshow
           <select id="cfg-interval">
             <option value="5000">5 segundos</option>
@@ -287,6 +288,7 @@
           <input type="checkbox" id="cfg-kenburns">
           Ken Burns (movimento suave nas fotos)
         </label>
+        <button type="button" class="btn-action btn-save-settings" id="btn-save-slideshow-settings" disabled>Gravar alterações</button>
         </div>
       </div>
 

@@ -68,7 +68,8 @@ const GALLERY_FOLDERS_KEY = 'sd_gallery_folders';
 const PHOTO_SOURCE_PREF_KEY = 'sd_photo_source_pref'; // 'gallery' | 'album'
 const PHOTO_INDEX_KEY = 'sd_photo_index';
 // Cache de object URLs para fotos nativas — evita re-carregar a mesma foto
-const nativePhotoCache = new Map(); // identifier → object URL
+const nativePhotoCache = new Map(); // identifier → object URL (full quality)
+const nativeThumbCache = new Map(); // identifier → data URL (thumbnail fallback do getMedias)
 // Cache de metadados para fotos nativas
 const nativeMetaCache = new Map(); // identifier → { location, date, time }
 
@@ -76,6 +77,9 @@ const nativeMetaCache = new Map(); // identifier → { location, date, time }
 const _nativeDiagCounts = {};
 let _nativeDiagTotal = 0;
 let _nativeDiagShown = false;
+let _nativeIdentifierErrors = 0;   // contador de erros de identifier inválido
+let _nativeReindexTriggered = false; // bloqueia auto-reindex (resetado só pelo botão manual)
+let _nativeGalleryLoading = false;   // guard de concorrência para loadFullGalleryNative
 function _nativeDiag(status, identifier, detail) {
   _nativeDiagCounts[status] = (_nativeDiagCounts[status] || 0) + 1;
   _nativeDiagTotal++;
@@ -211,7 +215,12 @@ async function queryFolderReadPermission(folder) {
 async function verifyHandleAccess(handle) {
   if (!handle) return true;
   try {
-    const iter = handle.values();
+    const iter = typeof handle.entries === 'function'
+      ? handle.entries()
+      : typeof handle.values === 'function'
+        ? handle.values()
+        : null;
+    if (!iter) return false;
     await iter.next();
     return true;
   } catch {
@@ -275,6 +284,23 @@ async function requestHandleReadPermission(handle) {
     console.warn('requestHandleReadPermission:', e);
     return false;
   }
+}
+
+async function* iterateDirectoryEntries(dirHandle) {
+  if (!dirHandle) return;
+  if (typeof dirHandle.entries === 'function') {
+    for await (const [, entry] of dirHandle.entries()) {
+      yield entry;
+    }
+    return;
+  }
+  if (typeof dirHandle.values === 'function') {
+    for await (const entry of dirHandle.values()) {
+      yield entry;
+    }
+    return;
+  }
+  throw new Error('Directory iterator unavailable');
 }
 
 async function requestFolderReadPermission(folder) {
@@ -790,6 +816,23 @@ async function createDisplayObjectUrlFromFile(file, { thumbnail = false } = {}) 
     } catch (e) {
       _nativeDiag('IDENTIFIER_ERR', file._nativeIdentifier, String(e));
       console.warn('createDisplayObjectUrlFromFile native:', e);
+      const msg = e?.errorMessage || e?.message || String(e);
+      if (msg.includes('Failed to get image data') || e?.code === 'argumentError') {
+        // Tenta thumbnail do cache como fallback (populado pelo getMedias)
+        const thumb = nativeThumbCache.get(file._nativeIdentifier);
+        if (thumb) {
+          nativePhotoCache.set(file._nativeIdentifier, thumb);
+          return thumb;
+        }
+        // Sem fallback: conta o erro e dispara re-indexação uma única vez
+        _nativeIdentifierErrors++;
+        if (_nativeIdentifierErrors >= 3 && !_nativeReindexTriggered && !_nativeGalleryLoading) {
+          _nativeReindexTriggered = true;
+          console.warn('Identificadores inválidos — re-indexando galeria automaticamente');
+          showToast('Galeria desatualizada — re-indexando…');
+          setTimeout(() => void loadFullGalleryNative(), 500);
+        }
+      }
       return null;
     }
   }
@@ -868,25 +911,33 @@ function loadExifrLibrary() {
 
 const photoGeocodeCache = new Map();
 
+// Rate limiter: Nominatim exige no máximo 1 req/s
+let _geocodeLastCall = 0;
+async function _geocodeRateLimit() {
+  const now = Date.now();
+  const wait = 1100 - (now - _geocodeLastCall);
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  _geocodeLastCall = Date.now();
+}
+
 async function reverseGeocodePhoto(lat, lon) {
   const key = `${lat.toFixed(3)},${lon.toFixed(3)}`;
   if (photoGeocodeCache.has(key)) return photoGeocodeCache.get(key);
 
   try {
-    const url = `https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&format=json&accept-language=pt`;
-    const res = await fetch(url, {
-      headers: {
-        'Accept-Language': 'pt-BR,pt',
-      },
-    });
+    await _geocodeRateLimit();
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&format=json&zoom=14&addressdetails=1&accept-language=pt-BR,pt`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'pt-BR,pt' } });
     if (!res.ok) return null;
     const data = await res.json();
     const addr = data.address || {};
-    const city = addr.city || addr.town || addr.village || addr.municipality || addr.suburb;
-    const region = addr.state || addr.region;
-    const label = [city, region].filter(Boolean).join(', ')
-      || data.display_name?.split(',').slice(0, 2).map((part) => part.trim()).filter(Boolean).join(', ')
-      || null;
+    const suburb = addr.suburb || addr.neighbourhood || addr.quarter || addr.hamlet;
+    const city = addr.city || addr.town || addr.village || addr.municipality || addr.county;
+    const state = addr.state || addr.region;
+    const parts = [suburb, city, state].filter(Boolean);
+    const label = parts.length
+      ? parts.join(', ')
+      : data.display_name?.split(',').slice(0, 3).map((p) => p.trim()).filter(Boolean).join(', ') || null;
     if (label) photoGeocodeCache.set(key, label);
     return label;
   } catch (e) {
@@ -960,7 +1011,9 @@ async function resolvePhotoLocation(file, parsed) {
   }
 
   if (Number.isFinite(lat) && Number.isFinite(lon)) {
-    return (await reverseGeocodePhoto(lat, lon)) || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+    const geocoded = await reverseGeocodePhoto(lat, lon);
+    if (geocoded) return geocoded;
+    // Geocoding falhou (rate limit, rede) — tenta campos de texto do EXIF
   }
 
   return pickExifLocationLabel(parsed);
@@ -1052,7 +1105,7 @@ async function collectImageEntries(dirHandle, folderId, onProgress) {
   while (dirs.length) {
     const { dir, basePath } = dirs.pop();
     try {
-      for await (const entry of dir.values()) {
+      for await (const entry of iterateDirectoryEntries(dir)) {
         const entryPath = `${basePath}${entry.name}`;
         if (entry.kind === 'file' && isImageFileName(entry.name)) {
           entries.push({
@@ -1331,7 +1384,11 @@ function setRescanButtonBusy(busy) {
   if (!rescanBtn) return;
   rescanBtn.disabled = busy || !usesFolderSource();
   rescanBtn.classList.toggle('is-busy', busy);
-  rescanBtn.textContent = busy ? 'Lendo pastas…' : 'Releitura das pastas';
+  if (isCapacitor()) {
+    rescanBtn.textContent = busy ? 'Reconectando galeria…' : 'Reconectar galeria';
+  } else {
+    rescanBtn.textContent = busy ? 'Lendo pastas…' : 'Releitura das pastas';
+  }
 }
 
 async function rescanLinkedFolders({ notify = true, resetIndex = true, interactive = false } = {}) {
@@ -1356,11 +1413,31 @@ async function rescanLinkedFolders({ notify = true, resetIndex = true, interacti
 
   folderRescanInProgress = true;
   setRescanButtonBusy(true);
+  showGalleryBuildProgress('Lendo pasta… 0%');
+
+  const totalKnown = State.linkedFolders.reduce((sum, f) => {
+    if (f.files?.length) return sum + f.files.length;
+    if (f.items?.length) return sum + f.items.length;
+    return -1; // pasta do disco — total desconhecido
+  }, 0);
+
   try {
-    const count = await refreshFolderPlaylist({ notify, resetIndex });
+    const count = await refreshFolderPlaylist({
+      notify,
+      resetIndex,
+      onProgress: (found) => {
+        if (totalKnown > 0) {
+          const pct = Math.min(99, Math.round((found / totalKnown) * 100));
+          showGalleryBuildProgress(`Organizando fotos… ${pct}%`);
+        } else {
+          showGalleryBuildProgress(`Lendo pasta… ${found} foto${found === 1 ? '' : 's'}`);
+        }
+      },
+    });
     await refreshPhotoViews();
     return count;
   } finally {
+    showGalleryBuildProgress('');
     folderRescanInProgress = false;
     setRescanButtonBusy(false);
   }
@@ -1369,7 +1446,6 @@ async function rescanLinkedFolders({ notify = true, resetIndex = true, interacti
 function updatePhotoActionButtons() {
   const hasFolders = usesFolderSource();
   const listBtn = document.getElementById('btn-show-photo-list');
-  const rescanBtn = document.getElementById('btn-rescan-folders');
   if (listBtn) {
     listBtn.disabled = !hasFolders;
     if (!hasFolders) {
@@ -1377,7 +1453,8 @@ function updatePhotoActionButtons() {
       listBtn.classList.remove('is-active');
     }
   }
-  if (rescanBtn) rescanBtn.disabled = !hasFolders;
+  // Atualiza label e estado do botão de rescan (texto depende da plataforma)
+  setRescanButtonBusy(false);
 }
 
 function formatPlaylistPath(path) {
@@ -1599,9 +1676,9 @@ async function readFolderImageAtIndex(index, retry = 0) {
       name: file.name || path.split('/').pop() || path,
     };
   } catch (e) {
-    if (retry > 1) return { src: null, total: names.length, name: '' };
-    await syncFolderPlaylistWithDisk();
-    return readFolderImageAtIndex(index, retry + 1);
+    // Não chama syncFolderPlaylistWithDisk aqui — é caro para playlists grandes
+    // e bloqueia clockPhotoNavBusy. updateClockPhoto já avança para a próxima foto.
+    return { src: null, total: names.length, name: '' };
   }
 }
 
@@ -1620,8 +1697,22 @@ function isAppleMobileDevice() {
   return detectAppleMobilePlatform();
 }
 
+function isEmbeddedDesktopBrowser() {
+  const ua = navigator.userAgent || '';
+  if (/Electron|Codex/i.test(ua)) return true;
+  return Boolean(window.process?.versions?.electron);
+}
+
+function isLocalDevelopmentOrigin() {
+  const host = window.location.hostname || '';
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+}
+
 function supportsDirectoryPicker() {
+  // Em Electron/localhost, o picker nativo falha neste fluxo; o input webkitdirectory é mais confiável.
   if (isAppleMobileDevice()) return false;
+  if (isEmbeddedDesktopBrowser()) return false;
+  if (isLocalDevelopmentOrigin()) return false;
   return (
     'showDirectoryPicker' in window &&
     window.isSecureContext &&
@@ -1650,15 +1741,27 @@ function updateFolderPickerButtons() {
     nativeBtn.hidden = true;
     fallbackLabel.hidden = true;
     if (galleryLabel) {
-      galleryLabel.hidden = false;
-      const hasGallery = State.linkedFolders.some((folder) => folder.gallerySource);
-      galleryLabel.textContent = hasGallery ? 'Adicionar mais fotos' : 'Incluir fotos da galeria';
+      // No Capacitor, sempre esconde o botão — galeria é gerenciada automaticamente
+      if (isCapacitor()) {
+        galleryLabel.hidden = true;
+        document.querySelectorAll('.settings-hint--ios-picker, .settings-hint--ios').forEach((el) => { el.hidden = true; });
+        const emptyMsg = document.getElementById('linked-folders-empty');
+        if (emptyMsg) emptyMsg.hidden = true;
+      } else {
+        const hasNativeGallery = State.linkedFolders.some((f) => f.nativeGallerySource);
+        galleryLabel.hidden = hasNativeGallery;
+        if (!hasNativeGallery) {
+          const hasGallery = State.linkedFolders.some((folder) => folder.gallerySource);
+          galleryLabel.textContent = hasGallery ? 'Substituir galeria' : 'Selecionar galeria';
+        }
+      }
     }
     return;
   }
 
   if (galleryLabel) galleryLabel.hidden = true;
-  nativeBtn.textContent = 'Incluir pasta';
+  const hasFolder = State.linkedFolders.some((f) => !f.gallerySource);
+  nativeBtn.textContent = hasFolder ? 'Substituir pasta' : 'Selecionar pasta';
   const useNative = supportsDirectoryPicker();
   nativeBtn.hidden = !useNative;
   fallbackLabel.hidden = useNative;
@@ -1683,11 +1786,12 @@ function openGalleryPickerDirect() {
 }
 
 function openGalleryPicker() {
-  const pref = getPhotoSourcePref();
-  if (pref === 'gallery' && isCapacitor()) {
-    void loadFullGalleryNative();
+  // No Capacitor sempre conecta diretamente com a galeria completa — sem modal
+  if (isCapacitor()) {
+    void loadFullGalleryNative({ manual: true });
     return;
   }
+  const pref = getPhotoSourcePref();
   if (pref) {
     openGalleryPickerDirect();
     return;
@@ -1722,19 +1826,28 @@ function initNativeGalleryFolder() {
   return true;
 }
 
-async function loadFullGalleryNative() {
+async function loadFullGalleryNative({ manual = false } = {}) {
+  // Guard: impede execuções concorrentes que destroem o estado do slideshow
+  if (_nativeGalleryLoading) return;
+  _nativeGalleryLoading = true;
+  _nativeReindexTriggered = true;  // bloqueia auto-triggers enquanto carrega
+  _nativeIdentifierErrors = 0;
+
+  setRescanButtonBusy(true);
+
   const Media = capacitorPlugin('Media');
   if (!Media) {
+    _nativeGalleryLoading = false;
+    setRescanButtonBusy(false);
     showToast('Plugin de mídia indisponível');
-    openGalleryPickerDirect();
     return;
   }
 
   showToast('Indexando galeria...');
   try {
-    // quantity alto para buscar todas as fotos (default do plugin é 25)
-    // thumbnailQuality: 0 = sem geração de thumbnail — evita truncar a lista por memória
-    const { medias } = await Media.getMedias({ types: 'photos', quantity: 99999, thumbnailQuality: 0 });
+    // thumbnailQuality: 60 — qualidade mínima utilizável como fallback de exibição
+    // quando getMediaByIdentifier não está disponível (ex: primeira versão do plugin)
+    const { medias } = await Media.getMedias({ types: 'photos', quantity: 99999, thumbnailQuality: 60 });
     if (!medias?.length) { showToast('Nenhuma foto encontrada na galeria'); return; }
 
     const items = medias
@@ -1746,6 +1859,14 @@ async function loadFullGalleryNative() {
         lat: Number.isFinite(m.location?.latitude) ? m.location.latitude : null,
         lon: Number.isFinite(m.location?.longitude) ? m.location.longitude : null,
       }));
+
+    // Popula cache de thumbnails como fallback quando getMediaByIdentifier falha
+    nativeThumbCache.clear();
+    medias.forEach((m) => {
+      if (m.identifier && m.data) {
+        nativeThumbCache.set(m.identifier, `data:image/jpeg;base64,${m.data}`);
+      }
+    });
 
     // Fonte única: remove qualquer galeria nativa anterior
     State.linkedFolders = State.linkedFolders.filter((f) => !f.nativeGallerySource);
@@ -1766,10 +1887,17 @@ async function loadFullGalleryNative() {
   } catch (e) {
     console.warn('loadFullGalleryNative:', e);
     showToast('Erro ao acessar galeria');
+  } finally {
+    _nativeGalleryLoading = false;
+    // Auto-trigger permanece bloqueado após conclusão para evitar loop infinito.
+    // Botão manual reseta para permitir nova tentativa.
+    if (manual) _nativeReindexTriggered = false;
+    setRescanButtonBusy(false);
   }
 }
 
 function showPhotoSourceModal() {
+  if (isCapacitor()) return; // No Capacitor nunca mostra modal — galeria é automática
   const overlay = document.getElementById('photo-source-overlay');
   if (overlay) overlay.classList.remove('hidden');
 }
@@ -1802,15 +1930,6 @@ function setupPhotoSourceModal() {
     if (e.target === document.getElementById('photo-source-overlay')) hidePhotoSourceModal();
   });
 
-  const changeBtn = document.getElementById('btn-change-photo-source');
-  if (changeBtn) {
-    if (isAppleMobileDevice()) changeBtn.style.display = '';
-    changeBtn.addEventListener('click', () => {
-      clearPhotoSourcePref();
-      hidePhotoSourceModal();
-      showPhotoSourceModal();
-    });
-  }
 }
 
 function openFolderPickerFallback() {
@@ -1818,6 +1937,14 @@ function openFolderPickerFallback() {
   if (!input) {
     showToast('Seletor de pasta indisponível neste navegador');
     return;
+  }
+  if (typeof input.showPicker === 'function') {
+    try {
+      input.showPicker();
+      return;
+    } catch (e) {
+      console.warn('openFolderPickerFallback.showPicker:', e);
+    }
   }
   input.click();
 }
@@ -1834,29 +1961,54 @@ function openFolderPicker() {
   openFolderPickerFallback();
 }
 
+function showGalleryBuildProgress(text) {
+  const el = document.getElementById('gallery-build-progress');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('hidden', !text);
+}
+
 async function afterFolderAdded({ notify = true } = {}) {
   renderLinkedFoldersList();
   renderFolderInfo();
   updateFolderPickerButtons();
   updatePhotoActionButtons();
 
+  const totalFiles = State.linkedFolders.reduce((sum, f) => {
+    if (f.files?.length) return sum + f.files.length;
+    if (f.items?.length) return sum + f.items.length;
+    return sum + 0;
+  }, 0);
+
+  showGalleryBuildProgress('Preparando lista… 0%');
+
   let count = 0;
-  if (notify) showToast('Lendo imagens da pasta…');
   try {
-    count = await refreshFolderPlaylist({ notify: false, resetIndex: true });
+    count = await refreshFolderPlaylist({
+      notify: false,
+      resetIndex: true,
+      onProgress: (found) => {
+        if (totalFiles > 0) {
+          const pct = Math.min(99, Math.round((found / totalFiles) * 100));
+          showGalleryBuildProgress(`Organizando fotos… ${pct}%`);
+        } else {
+          showGalleryBuildProgress(`Organizando fotos… ${found} encontrada${found === 1 ? '' : 's'}`);
+        }
+      },
+    });
   } catch (e) {
     console.warn('afterFolderAdded playlist:', e);
   } finally {
+    showGalleryBuildProgress('');
     await refreshPhotoViews();
   }
 
   if (notify) {
-    const names = State.linkedFolders.map((folder) => `"${folder.name}"`).join(', ');
-    const persisted = State.linkedFolders.some((folder) => folder.handle);
-    const savedNote = persisted ? ' — salva neste dispositivo' : '';
+    const isGallery = State.linkedFolders.some((f) => f.gallerySource);
+    const savedNote = isGallery ? ' — salva neste dispositivo' : (State.linkedFolders.some((f) => f.handle) ? ' — salva neste dispositivo' : '');
     showToast(count
-      ? `Pasta incluída: ${names} — ${count} foto${count === 1 ? '' : 's'} em ordem aleatória${savedNote}`
-      : `Pasta incluída: ${names} — nenhuma imagem compatível encontrada${savedNote}`);
+      ? `${count} foto${count === 1 ? '' : 's'} em ordem aleatória${savedNote}`
+      : 'Nenhuma imagem compatível encontrada');
   }
 }
 
@@ -1865,14 +2017,15 @@ async function bindFolderHandle(dir) {
   try {
     const granted = await requestHandleReadPermission(dir);
     if (!granted) {
-      showToast('Permissão de leitura da pasta negada');
-      return;
+      console.warn('bindFolderHandle: permission request did not confirm read access, continuing');
     }
 
     const added = await addLinkedFolderHandle(dir, dir.name);
     if (!added) return;
     const folder = State.linkedFolders.find((f) => f.handle === dir);
-    if (folder) markFolderPermissionGranted(folder.id);
+    if (folder) {
+      await folderHasReadAccess(folder);
+    }
     await updateFolderPermissionBanner();
     void updateLinkedFoldersPermissionLabels();
     await afterFolderAdded({ notify: true });
@@ -1921,23 +2074,18 @@ async function handleGalleryPickerInput(input) {
     return;
   }
 
+  // Sempre substitui a galeria anterior — modo galeria única
   const existingGallery = State.linkedFolders.find((folder) => folder.gallerySource);
   if (existingGallery) {
     folderPickInProgress = true;
     try {
-      const added = await appendToGalleryFolder(existingGallery.id, files);
-      await afterFolderAdded({ notify: false });
-      const total = existingGallery.files?.length || 0;
-      showToast(added
-        ? `${added} foto${added === 1 ? '' : 's'} adicionada${added === 1 ? '' : 's'} — ${total} no total`
-        : `Nenhuma foto nova — ${total} já incluída${total === 1 ? '' : 's'}`);
+      await removeLinkedFolder(existingGallery.id);
+      saveLinkedFoldersMeta();
     } catch (e) {
-      console.warn('appendToGalleryFolder:', e);
-      showToast('Erro ao adicionar fotos da galeria');
+      console.warn('handleGalleryPickerInput removeLinkedFolder:', e);
     } finally {
       folderPickInProgress = false;
     }
-    return;
   }
 
   void applySessionFolder(files, { name: 'Galeria de Fotos', gallerySource: true });
@@ -1997,10 +2145,6 @@ function setupFolderPickerUi() {
   const fallbackLabel = document.getElementById('btn-add-photo-folder-fallback');
   if (fallbackLabel && !fallbackLabel.dataset.bound) {
     fallbackLabel.dataset.bound = '1';
-    fallbackLabel.addEventListener('click', (e) => {
-      e.preventDefault();
-      openFolderPicker();
-    });
   }
 
   const galleryLabel = document.getElementById('btn-add-photo-gallery-ios');
@@ -2376,8 +2520,7 @@ async function extractPhotoMetadata(file) {
       }
     }
     if (Number.isFinite(file._nativeLat) && Number.isFinite(file._nativeLon)) {
-      meta.location = (await reverseGeocodePhoto(file._nativeLat, file._nativeLon))
-        || `${file._nativeLat.toFixed(4)}, ${file._nativeLon.toFixed(4)}`;
+      meta.location = await reverseGeocodePhoto(file._nativeLat, file._nativeLon) || null;
     }
 
     // 2ª opção: lê EXIF do blob já em cache (carregado para exibição)
@@ -2449,19 +2592,70 @@ async function extractPhotoMetadata(file) {
   return meta;
 }
 
+const META_FADE_MS = 350;
+
 function hideClockPhotoMeta() {
   const overlay = document.getElementById('clock-photo-meta');
-  overlay?.classList.add('hidden');
-  if (overlay) {
-    overlay.style.left = '';
-    overlay.style.maxWidth = '';
+  if (!overlay) return;
+  overlay.classList.remove('visible');
+  overlay.classList.add('no-photos');
+  overlay.style.left = '';
+  overlay.style.maxWidth = '';
+}
+
+function fadeOutClockPhotoMeta(durationMs = META_FADE_MS) {
+  const overlay = document.getElementById('clock-photo-meta');
+  if (!overlay) return;
+  overlay.style.transition = `opacity ${durationMs}ms ease`;
+  overlay.classList.remove('visible');
+}
+
+function fadeInClockPhotoMeta() {
+  const overlay = document.getElementById('clock-photo-meta');
+  if (!overlay) return;
+  overlay.classList.remove('no-photos');
+  overlay.style.transition = `opacity ${META_FADE_MS}ms ease`;
+  requestAnimationFrame(() => {
+    overlay.classList.add('visible');
+    requestAnimationFrame(syncClockPhotoMetaLayout);
+  });
+}
+
+function applyClockPhotoMetaContent(meta, photoIndex, total) {
+  const locLine  = document.getElementById('clock-photo-meta-location');
+  const locValue = document.getElementById('clock-photo-meta-location-value');
+  const dateLine = document.getElementById('clock-photo-meta-date');
+  const timeLine = document.getElementById('clock-photo-meta-time');
+  const timeVal  = document.getElementById('clock-photo-meta-time-value');
+  const indexLine = document.getElementById('clock-photo-meta-index');
+
+  if (locLine) {
+    locLine.hidden = false;
+    if (locValue) locValue.textContent = meta?.location || PHOTO_META_UNKNOWN;
   }
+  if (dateLine) { dateLine.textContent = meta?.date || PHOTO_META_UNKNOWN; dateLine.hidden = false; }
+  if (timeLine) {
+    if (timeVal) timeVal.textContent = meta?.time || PHOTO_META_UNKNOWN;
+    else timeLine.textContent = meta?.time || PHOTO_META_UNKNOWN;
+    timeLine.hidden = false;
+  }
+  if (indexLine) {
+    indexLine.textContent = total > 0 ? `${photoIndex + 1} / ${total}` : '';
+    indexLine.hidden = total <= 0;
+  }
+}
+
+async function prefetchClockPhotoMeta(photoIndex) {
+  const file  = await getPhotoFileAtIndex(photoIndex);
+  const meta  = await extractPhotoMetadata(file);
+  const total = await getPhotoSourceCount();
+  return { meta, total };
 }
 
 function syncClockPhotoMetaLayout() {
   const overlay = document.getElementById('clock-photo-meta');
   const leftCol = document.getElementById('clock-left-col');
-  if (!overlay || !leftCol || overlay.classList.contains('hidden')) return;
+  if (!overlay || !leftCol || overlay.classList.contains('no-photos')) return;
 
   const colRect = leftCol.getBoundingClientRect();
   overlay.style.maxWidth = `${Math.min(380, Math.max(120, colRect.width - 16))}px`;
@@ -2482,49 +2676,6 @@ function bindClockPhotoMetaLayoutSync() {
   if (leftCol && typeof ResizeObserver !== 'undefined') {
     new ResizeObserver(() => syncClockPhotoMetaLayout()).observe(leftCol);
   }
-}
-
-async function updateClockPhotoMeta(photoIndex) {
-  const overlay = document.getElementById('clock-photo-meta');
-  if (!overlay) return;
-
-  const requestId = ++clockPhotoMetaRequest;
-  const file = await getPhotoFileAtIndex(photoIndex);
-  if (requestId !== clockPhotoMetaRequest) return;
-
-  const meta = await extractPhotoMetadata(file);
-  if (requestId !== clockPhotoMetaRequest) return;
-
-  const locLine = document.getElementById('clock-photo-meta-location');
-  const locValue = document.getElementById('clock-photo-meta-location-value');
-  const dateLine = document.getElementById('clock-photo-meta-date');
-  const timeLine = document.getElementById('clock-photo-meta-time');
-  const indexLine = document.getElementById('clock-photo-meta-index');
-
-  overlay.classList.remove('hidden');
-  if (locLine) {
-    locLine.hidden = false;
-    if (locValue) locValue.textContent = meta?.location || PHOTO_META_UNKNOWN;
-  }
-  if (dateLine) {
-    dateLine.textContent = meta?.date || PHOTO_META_UNKNOWN;
-    dateLine.hidden = false;
-  }
-  if (timeLine) {
-    const timeVal = document.getElementById('clock-photo-meta-time-value');
-    if (timeVal) timeVal.textContent = meta?.time || PHOTO_META_UNKNOWN;
-    else timeLine.textContent = meta?.time || PHOTO_META_UNKNOWN;
-    timeLine.hidden = false;
-  }
-  if (indexLine) {
-    const total = await getPhotoSourceCount();
-    indexLine.textContent = total > 0 ? `${photoIndex + 1} / ${total}` : '';
-    indexLine.hidden = total <= 0;
-  }
-
-  requestAnimationFrame(() => {
-    requestAnimationFrame(syncClockPhotoMetaLayout);
-  });
 }
 
 function tickClock() {
@@ -2854,6 +3005,7 @@ let clockPhotoIndex = (() => {
   try { return parseInt(localStorage.getItem(PHOTO_INDEX_KEY) || '0', 10) || 0; } catch { return 0; }
 })();
 let clockPhotoTimer = null;
+let clockPhotoTimerGen = 0;
 
 function savePhotoIndex(index) {
   try { localStorage.setItem(PHOTO_INDEX_KEY, String(index)); } catch {}
@@ -2861,17 +3013,24 @@ function savePhotoIndex(index) {
 
 let clockPhotoNavBusy = false;
 
-async function startClockPhoto() {
+async function rescheduleClockPhotoTimer() {
   clearInterval(clockPhotoTimer);
-  await updateClockPhoto();
+  clockPhotoTimer = null;
+  const gen = ++clockPhotoTimerGen;
   const count = await getPhotoSourceCount();
+  // Se outra chamada de reschedule chegou enquanto aguardávamos, descarta esta.
+  if (gen !== clockPhotoTimerGen) return;
   if (count > 1) {
     clockPhotoTimer = setInterval(() => {
-      // Ignora disparo se navegação anterior ainda em curso
       if (clockPhotoNavBusy) return;
       void navigateClockPhoto(1, false);
     }, State.cfg.interval);
   }
+}
+
+async function startClockPhoto() {
+  await updateClockPhoto();
+  await rescheduleClockPhotoTimer();
 }
 
 async function navigateClockPhoto(delta, restartTimer = true) {
@@ -2886,7 +3045,7 @@ async function navigateClockPhoto(delta, restartTimer = true) {
     await updateClockPhoto();
 
     if (restartTimer) {
-      await startClockPhoto();
+      await rescheduleClockPhotoTimer();
     }
   } finally {
     clockPhotoNavBusy = false;
@@ -2961,11 +3120,13 @@ async function updateClockPhoto() {
 
   if (clockPhotoIndex >= count) clockPhotoIndex = 0;
 
-  // Loop iterativo: tenta até 50 fotos antes de exibir tela vazia
-  const maxSkip = Math.min(50, count);
+  // No Capacitor, erros de identifier são sistêmicos — tenta só 1 foto para não
+  // acumular contadores rapidamente e disparar re-indexação em loop.
+  // No desktop, tenta até 3 para pular arquivos pontualmente inacessíveis.
+  const MAX_RESOLVE_TRIES = Math.min(isCapacitor() ? 1 : 3, count);
   let src = null;
   let resolvedIndex = clockPhotoIndex;
-  for (let attempt = 0; attempt < maxSkip; attempt++) {
+  for (let attempt = 0; attempt < MAX_RESOLVE_TRIES; attempt++) {
     const idx = (clockPhotoIndex + attempt) % count;
     const result = await resolvePhotoAtIndex(idx);
     if (isUsableImageSrc(result.src)) {
@@ -2985,6 +3146,11 @@ async function updateClockPhoto() {
     if (empty) empty.style.display = 'flex';
     hideClockPhotoMeta();
     await updateClockPhotoNav();
+    // Se Capacitor e galeria existe mas foto não carrega, pode ser permissão revogada
+    if (isCapacitor() && State.linkedFolders.some((f) => f.nativeGallerySource)) {
+      console.warn('updateClockPhoto: foto não resolvida no índice', clockPhotoIndex,
+        '— verifique permissão da galeria ou pressione Atualizar galeria');
+    }
     return;
   }
 
@@ -3009,12 +3175,28 @@ async function updateClockPhoto() {
   const outgoing  = clockPhotoActive === 'a' ? imgA : imgB;
   const capturedIndex = resolvedIndex;
 
+  // Pré-busca metadados em paralelo com o carregamento da imagem
+  const metaReqId = ++clockPhotoMetaRequest;
+  const metaPromise = prefetchClockPhotoMeta(capturedIndex);
+
   // Revoga blob da imagem que vai entrar (incoming, não mais necessário)
   if (clockPhotoObjectUrls[incomingKey]) {
     revokeObjectUrl(clockPhotoObjectUrls[incomingKey]);
     clockPhotoObjectUrls[incomingKey] = null;
   }
   if (src.startsWith('blob:')) clockPhotoObjectUrls[incomingKey] = src;
+
+  // Após a transição da foto terminar, mostra os metadados sincronizados
+  function scheduleMetaIn(delayMs) {
+    setTimeout(() => {
+      if (metaReqId !== clockPhotoMetaRequest) return;
+      metaPromise.then(({ meta, total }) => {
+        if (metaReqId !== clockPhotoMetaRequest) return;
+        applyClockPhotoMetaContent(meta, capturedIndex, total);
+        fadeInClockPhotoMeta();
+      }).catch(() => {});
+    }, delayMs);
+  }
 
   const loader = new Image();
   loader.onload = () => {
@@ -3027,10 +3209,8 @@ async function updateClockPhoto() {
     incoming.getAnimations().forEach(a => a.cancel());
     outgoing.className = 'clock-photo-img active';
 
-    // Atualiza o estado imediatamente — antes do RAF para evitar race condition
     clockPhotoActive = incomingKey;
     savePhotoIndex(capturedIndex);
-    void updateClockPhotoMeta(capturedIndex);
 
     const capturedOutKey = incomingKey === 'a' ? 'b' : 'a';
 
@@ -3042,16 +3222,19 @@ async function updateClockPhoto() {
     }
 
     if (effect === 'none') {
+      fadeOutClockPhotoMeta(0);
       incoming.classList.add('active');
       outgoing.classList.remove('active');
       outgoing.style.transform = '';
       if (frame) frame.className = '';
       if (kenburnsEnabled) applyKenBurns(incoming);
+      scheduleMetaIn(0);
       return;
     }
 
     if (effect === 'fade') {
       const FADE_MS = 2500;
+      fadeOutClockPhotoMeta(FADE_MS);
       incoming.classList.add('active');
       incoming.animate([{ opacity: 0 }, { opacity: 1 }], { duration: FADE_MS, easing: 'ease', fill: 'none' });
       outgoing.classList.remove('active');
@@ -3066,12 +3249,14 @@ async function updateClockPhoto() {
           clockPhotoObjectUrls[capturedOutKey] = null;
         }
       }, FADE_MS + 100);
+      scheduleMetaIn(FADE_MS);
       return;
     }
 
-    // Zoom sequencial: zoom out da foto atual (do ponto atual), depois zoom in da nova
+    // Zoom sequencial: zoom out da foto atual, depois zoom in da nova
     if (effect === 'zoom') {
       const ZOOM_MS = 1500;
+      fadeOutClockPhotoMeta(ZOOM_MS);
       if (frame) frame.className = 'fx-zoom';
       requestAnimationFrame(() => {
         outgoing.animate(
@@ -3095,10 +3280,13 @@ async function updateClockPhoto() {
           }, ZOOM_MS);
         }, ZOOM_MS);
       });
+      scheduleMetaIn(ZOOM_MS * 2);
       return;
     }
 
     // Slide: randomiza direção a cada transição
+    const SLIDE_MS = 1500;
+    fadeOutClockPhotoMeta(SLIDE_MS);
     const SLIDE_DIRS = ['right', 'left', 'up', 'down'];
     const slideDir = SLIDE_DIRS[Math.floor(Math.random() * SLIDE_DIRS.length)];
     const frameClass = `fx-slide-${slideDir}`;
@@ -3109,7 +3297,7 @@ async function updateClockPhoto() {
       incoming.classList.add('active', 'cp-in');
       outgoing.animate(
         [{ transform: outgoingTransform }, { transform: slideEndTransform }],
-        { duration: 1500, easing: 'ease', fill: 'forwards' }
+        { duration: SLIDE_MS, easing: 'ease', fill: 'forwards' }
       );
 
       setTimeout(() => {
@@ -3124,14 +3312,17 @@ async function updateClockPhoto() {
           revokeObjectUrl(clockPhotoObjectUrls[capturedOutKey]);
           clockPhotoObjectUrls[capturedOutKey] = null;
         }
-      }, 1500);
+      }, SLIDE_MS);
     });
+    scheduleMetaIn(SLIDE_MS);
   };
   loader.onerror = () => {
     console.warn('clock photo img render failed, advancing');
     hideClockPhotoMeta();
-    clockPhotoIndex = (capturedIndex + 1) % count;
-    savePhotoIndex(clockPhotoIndex);
+    // Avança via navigateClockPhoto para respeitar o busy flag e não criar race condition
+    if (!clockPhotoNavBusy) {
+      setTimeout(() => void navigateClockPhoto(1, false), 300);
+    }
   };
   loader.src = src;
   await updateClockPhotoNav();
@@ -3382,6 +3573,9 @@ function openSettings() {
   })();
   renderCamerasList();
 
+  const saveSlideshowBtn = document.getElementById('btn-save-slideshow-settings');
+  if (saveSlideshowBtn) saveSlideshowBtn.disabled = true;
+
   document.getElementById('settings-panel').classList.remove('hidden');
 }
 
@@ -3437,6 +3631,9 @@ function saveDisplayConfig() {
   State.cfg.transition = document.getElementById('cfg-transition').value;
   State.cfg.kenburns = document.getElementById('cfg-kenburns').checked;
   saveConfig();
+  if (State.mode === 'clock') {
+    void rescheduleClockPhotoTimer();
+  }
   if (State.cfg.wakelock) requestWakeLock();
   else releaseWakeLock();
 }
@@ -4015,7 +4212,7 @@ function bindEvents() {
   document.getElementById('btn-rescan-folders')?.addEventListener('click', () => {
     if (isCapacitor()) {
       // No Capacitor, re-indexa a galeria do zero (limpa cache e lista)
-      void loadFullGalleryNative().then(() => {
+      void loadFullGalleryNative({ manual: true }).then(() => {
         if (photoPlaylistListVisible) void renderPhotoPlaylistList();
       });
     } else {
@@ -4025,14 +4222,26 @@ function bindEvents() {
     }
   });
 
-  document.getElementById('cfg-transition').addEventListener('change', e => {
-    State.cfg.transition = e.target.value;
-    saveConfig();
-  });
+  const saveSlideshowBtn = document.getElementById('btn-save-slideshow-settings');
 
-  document.getElementById('cfg-kenburns').addEventListener('change', e => {
-    State.cfg.kenburns = e.target.checked;
+  function markSlideshowDirty() {
+    if (saveSlideshowBtn) saveSlideshowBtn.disabled = false;
+  }
+
+  document.getElementById('cfg-interval').addEventListener('change', markSlideshowDirty);
+
+  document.getElementById('cfg-transition').addEventListener('change', markSlideshowDirty);
+
+  document.getElementById('cfg-kenburns').addEventListener('change', markSlideshowDirty);
+
+  saveSlideshowBtn?.addEventListener('click', () => {
+    State.cfg.interval = parseInt(document.getElementById('cfg-interval').value);
+    State.cfg.transition = document.getElementById('cfg-transition').value;
+    State.cfg.kenburns = document.getElementById('cfg-kenburns').checked;
     saveConfig();
+    if (State.mode === 'clock') void rescheduleClockPhotoTimer();
+    saveSlideshowBtn.disabled = true;
+    showToast('Configurações do slideshow gravadas');
   });
 
   document.getElementById('cfg-night-mode').addEventListener('change', e => {
@@ -4147,6 +4356,11 @@ async function init() {
       await clearLegacyPhotoStorage();
       if (isCapacitor()) {
         await clearOldGalleryData();
+        // Primeira execução: nenhuma galeria salva → solicita acesso automaticamente
+        const hasNativeGallery = State.linkedFolders.some((f) => f.nativeGallerySource);
+        if (!hasNativeGallery) {
+          void loadFullGalleryNative();
+        }
       } else if (isAppleMobileDevice()) {
         await loadStoredGalleryFolders();
       } else {

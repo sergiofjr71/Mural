@@ -1,0 +1,38 @@
+diff --git a/node_modules/@capacitor-community/media/ios/Plugin/MediaPlugin.swift b/node_modules/@capacitor-community/media/ios/Plugin/MediaPlugin.swift
+index 048138c..63346c8 100644
+--- a/node_modules/@capacitor-community/media/ios/Plugin/MediaPlugin.swift
++++ b/node_modules/@capacitor-community/media/ios/Plugin/MediaPlugin.swift
+@@ -66,22 +66,24 @@ public class MediaPlugin: CAPPlugin {
+             }
+ 
+             if asset.mediaType == .image {
++                // Use requestImage instead of requestImageDataAndOrientation for better
++                // compatibility with iCloud Photo Library and opportunistic delivery.
+                 let requestOptions = PHImageRequestOptions()
+                 requestOptions.isNetworkAccessAllowed = true
+-                PHImageManager.default().requestImageDataAndOrientation(for: asset, options: requestOptions) { imageData, uti, _, _ in
+-                    guard let imageData = imageData else {
++                requestOptions.deliveryMode = .highQualityFormat
++                requestOptions.version = .current
++                let targetSize = CGSize(width: 3000, height: 3000)
++                PHImageManager.default().requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFit, options: requestOptions) { fetchedImage, info in
++                    let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
++                    if isDegraded { return }
++
++                    guard let image = fetchedImage, let imageData = image.jpegData(compressionQuality: 0.92) else {
+                         call.reject("Failed to get image data for identifier", EC_ARG_ERROR)
+                         return
+                     }
+ 
+-                    var ext = "png" // default extension
+-                    // Get extension from UTI
+-                    if let uti = uti {
+-                       ext = UTTypeCopyPreferredTagWithClass(uti as CFString, kUTTagClassFilenameExtension)?.takeRetainedValue() as String? ?? ext
+-                    }
+-
+                     // Create path and save image
+-                    let fileURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("image-\(Int.random(in: 0...100000)).\(ext)")
++                    let fileURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("image-\(Int.random(in: 0...100000)).jpg")
+                     do {
+                         try imageData.write(to: fileURL)
+                         var ret = JSObject()

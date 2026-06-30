@@ -3,7 +3,7 @@ PODS:
     - CapacitorCordova
   - CapacitorCommunityKeepAwake (6.0.0):
     - Capacitor
-  - CapacitorCommunityMedia (7.0.0):
+  - CapacitorCommunityMedia (8.0.1):
     - Capacitor
     - SDWebImage
   - CapacitorCordova (7.6.6)
@@ -39,11 +39,11 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   Capacitor: 961efd309ab0e390a8081b63c561186f61a6714d
   CapacitorCommunityKeepAwake: 31119384836fb7d4c0f7323df974891d399b03e2
-  CapacitorCommunityMedia: 060b6dac77f3004e3d4de20b4be55c4e1899003e
+  CapacitorCommunityMedia: d1538b56a3303298e7cf45a18b11e624fbcbdc8e
   CapacitorCordova: 3a4e0027a89a59421c918d19aee9d6ba1c7a3556
   CapacitorStatusBar: 416e9e53fd6397e668d4a181cd2131617d949bd6
   SDWebImage: e9fc87c1aab89a8ab1bbd74eba378c6f53be8abf
 
-PODFILE CHECKSUM: 52c38e09dcbd3615f089ab5ca37fea7fdc36bf41
+PODFILE CHECKSUM: 3a98189b1a0a0aa99c7c0c5d70798b2dd232045d
 
 COCOAPODS: 1.16.2

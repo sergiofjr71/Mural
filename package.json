@@ -4,6 +4,7 @@
   "description": "Relógio, clima, fotos e câmeras ao vivo para iPad",
   "private": true,
   "scripts": {
+    "postinstall": "patch-package",
     "dev": "node scripts/watch-dev.mjs",
     "dev:server": "node scripts/sync-www.mjs && python3 scripts/dev-server.py",
     "dev:doctor": "node scripts/dev-doctor.mjs",
@@ -17,13 +18,14 @@
     "ios:pods": "node scripts/pod-install.mjs"
   },
   "dependencies": {
+    "@capacitor-community/keep-awake": "^6.0.0",
+    "@capacitor-community/media": "8.0.1",
     "@capacitor/core": "^7.0.0",
     "@capacitor/ios": "^7.0.0",
-    "@capacitor/status-bar": "^7.0.0",
-    "@capacitor-community/keep-awake": "^6.0.0",
-    "@capacitor-community/media": "7.0.0"
+    "@capacitor/status-bar": "^7.0.0"
   },
   "devDependencies": {
-    "@capacitor/cli": "^7.0.0"
+    "@capacitor/cli": "^7.0.0",
+    "patch-package": "^8.0.1"
   }
 }

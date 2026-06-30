@@ -212,9 +212,16 @@ html, body {
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 350ms ease;
 }
 
-.clock-photo-meta.hidden {
+.clock-photo-meta.visible {
+  opacity: 1;
+}
+
+/* Usado quando não há fotos — remove do fluxo completamente */
+.clock-photo-meta.no-photos {
   display: none !important;
 }
 
@@ -1747,6 +1754,61 @@ label.folder-picker-btn {
 
 #photo-folder-picker {
   cursor: pointer;
+}
+
+.settings-divider {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 12px 0 4px;
+}
+
+.btn-save-settings {
+  width: 100%;
+  margin-top: 12px;
+  opacity: 0.4;
+  transition: opacity 0.2s;
+}
+
+.btn-save-settings:not(:disabled) {
+  opacity: 1;
+}
+
+.gallery-build-progress {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 0.9rem;
+  color: var(--color-text-secondary, #a0a8b8);
+  animation: gallery-progress-pulse 1.4s ease-in-out infinite;
+}
+
+.gallery-build-progress::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-top-color: var(--color-accent, #5b8ef0);
+  border-radius: 50%;
+  animation: gallery-spinner 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.gallery-build-progress.hidden {
+  display: none;
+}
+
+@keyframes gallery-spinner {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes gallery-progress-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 
 .btn-choose-photo-folder {
