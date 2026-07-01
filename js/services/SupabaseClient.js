@@ -116,11 +116,30 @@ window.SupabaseClient = (function () {
   }
 
   // ── test connection ────────────────────────────────────────────────────────
-  async function testConnection() {
+  async function testConnection(timeoutMs = 8000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      await request('/rest/v1/?select=1', { extraHeaders: { 'Prefer': '' } });
-      return { ok: true };
+      const { url, anonKey } = getConfig();
+      if (!url) return { ok: false, error: 'URL não configurada' };
+
+      const res = await fetch(`${url}/rest/v1/photos?select=id&limit=1`, {
+        method: 'GET',
+        headers: {
+          'apikey':        anonKey,
+          'Authorization': `Bearer ${anonKey}`,
+          'Content-Type':  'application/json',
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      // 200 ou 406 (tabela existe mas sem dados) = conexão OK
+      if (res.ok || res.status === 406 || res.status === 404) return { ok: true };
+      const err = await res.json().catch(() => ({}));
+      return { ok: false, error: err.message || `HTTP ${res.status}` };
     } catch (e) {
+      clearTimeout(timer);
+      if (e.name === 'AbortError') return { ok: false, error: 'Tempo esgotado (8s) — verifique a URL e a rede' };
       return { ok: false, error: e.message };
     }
   }
