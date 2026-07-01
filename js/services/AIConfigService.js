@@ -18,6 +18,8 @@ window.AIConfigService = (function () {
     anthropic: 'claude-haiku-4-5-20251001',
     openai:    'gpt-4o-mini',
     google:    'gemini-1.5-flash',
+    xai:       'grok-2-vision-1212',
+    mistral:   'pixtral-12b-2409',
   };
 
   function get(key, fallback = '') {
@@ -76,6 +78,10 @@ Use linguagem cuidadosa para inferências: prefira "possível" ou "provável".`;
       return _callOpenAI(imageBase64, prompt, model, apiKey);
     } else if (provider === 'google') {
       return _callGemini(imageBase64, prompt, model, apiKey);
+    } else if (provider === 'xai') {
+      return _callXAI(imageBase64, prompt, model, apiKey);
+    } else if (provider === 'mistral') {
+      return _callMistral(imageBase64, prompt, model, apiKey);
     }
     throw new Error(`Provedor desconhecido: ${provider}`);
   }
@@ -163,6 +169,62 @@ Use linguagem cuidadosa para inferências: prefira "possível" ou "provável".`;
     const data = await res.json();
     const text = data.candidates[0].content.parts[0].text;
     return JSON.parse(text);
+  }
+
+  // ── xAI (Grok) — API compatível com OpenAI ──────────────────────────────
+  async function _callXAI(imageBase64, prompt, model, apiKey) {
+    const res = await fetch('https://api.x.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({
+        model: model || DEFAULT_MODELS.xai,
+        max_tokens: 512,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64}` } },
+            { type: 'text', text: prompt },
+          ],
+        }],
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `xAI HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    return JSON.parse(data.choices[0].message.content);
+  }
+
+  // ── Mistral (Pixtral) ────────────────────────────────────────────────────
+  async function _callMistral(imageBase64, prompt, model, apiKey) {
+    const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({
+        model: model || DEFAULT_MODELS.mistral,
+        max_tokens: 512,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64}` } },
+            { type: 'text',      text: prompt },
+          ],
+        }],
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `Mistral HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    return JSON.parse(data.choices[0].message.content);
   }
 
   return { getConfig, saveConfig, isConfigured, getDefaultModel, analyzePhoto };
