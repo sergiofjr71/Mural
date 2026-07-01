@@ -82,7 +82,6 @@ html, body {
 .clock-wrapper {
   position: relative;
   flex: 0 0 auto;
-  order: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
