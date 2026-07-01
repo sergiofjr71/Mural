@@ -4247,9 +4247,11 @@ function bindEvents() {
 
   // fotos
   document.getElementById('clock-photo-prev')?.addEventListener('click', () => {
+    showClockNavArrows();
     void navigateClockPhoto(-1);
   });
   document.getElementById('clock-photo-next')?.addEventListener('click', () => {
+    showClockNavArrows();
     void navigateClockPhoto(1);
   });
   bindClockPhotoNavHighlight();
