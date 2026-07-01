@@ -2241,13 +2241,20 @@ label.btn-choose-photo-folder {
 #btn-photo-source-cancel:hover { color: var(--text); border-color: var(--text-dim); }
 
 /* ── IA & Pessoas ──────────────────────────────────────── */
+.settings-sub-card {
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 .settings-sub-heading {
   font-size: 14px;
   font-weight: 700;
   color: var(--text);
-  margin: 4px 0 8px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--bg3);
+  margin: 0;
 }
 .settings-label {
   display: block;

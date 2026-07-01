@@ -301,74 +301,76 @@
         <div id="settings-section-ai" class="settings-section-body">
 
           <!-- Fotos -->
-          <p class="settings-sub-heading">📷 Análise de Fotos</p>
-          <p class="settings-hint">Provedor com suporte a visão. A chave fica salva apenas neste dispositivo.</p>
+          <div class="settings-sub-card">
+            <p class="settings-sub-heading">📷 Análise de Fotos</p>
+            <p class="settings-hint">Provedor com suporte a visão. A chave fica salva apenas neste dispositivo.</p>
 
-          <label class="settings-label" for="cfg-ai-provider">Provedor</label>
-          <select id="cfg-ai-provider" class="settings-select">
-            <option value="">— Selecionar —</option>
-            <option value="anthropic">Anthropic (Claude)</option>
-            <option value="openai">OpenAI (GPT-4o)</option>
-            <option value="google">Google (Gemini)</option>
-            <option value="xai">xAI (Grok)</option>
-            <option value="mistral">Mistral (Pixtral)</option>
-          </select>
+            <label class="settings-label" for="cfg-ai-provider">Provedor</label>
+            <select id="cfg-ai-provider" class="settings-select">
+              <option value="">— Selecionar —</option>
+              <option value="anthropic">Anthropic (Claude)</option>
+              <option value="openai">OpenAI (GPT-4o)</option>
+              <option value="google">Google (Gemini)</option>
+              <option value="xai">xAI (Grok)</option>
+              <option value="mistral">Mistral (Pixtral)</option>
+            </select>
 
-          <label class="settings-label" for="cfg-ai-model">Modelo</label>
-          <input type="text" id="cfg-ai-model" class="settings-input" placeholder="ex: claude-haiku-4-5-20251001" autocorrect="off" autocapitalize="none" spellcheck="false">
+            <label class="settings-label" for="cfg-ai-model">Modelo</label>
+            <input type="text" id="cfg-ai-model" class="settings-input" placeholder="ex: claude-haiku-4-5-20251001" autocorrect="off" autocapitalize="none" spellcheck="false">
 
-          <label class="settings-label" for="cfg-ai-key">Chave de API</label>
-          <div class="settings-api-key-row">
-            <input type="password" id="cfg-ai-key" class="settings-input" placeholder="sk-..." autocorrect="off" autocapitalize="none" spellcheck="false">
-            <button type="button" id="btn-ai-key-toggle" class="btn-icon" aria-label="Mostrar/ocultar chave">👁</button>
+            <label class="settings-label" for="cfg-ai-key">Chave de API</label>
+            <div class="settings-api-key-row">
+              <input type="password" id="cfg-ai-key" class="settings-input" placeholder="sk-..." autocorrect="off" autocapitalize="none" spellcheck="false">
+              <button type="button" id="btn-ai-key-toggle" class="btn-icon" aria-label="Mostrar/ocultar chave">👁</button>
+            </div>
+
+            <button type="button" id="btn-ai-save" class="btn-action">Salvar configuração de fotos</button>
+            <p id="ai-config-status" class="settings-hint" hidden></p>
+            <p class="settings-hint">As fotos são analisadas automaticamente conforme aparecem no slideshow.</p>
           </div>
-
-          <button type="button" id="btn-ai-save" class="btn-action">Salvar configuração de fotos</button>
-          <p id="ai-config-status" class="settings-hint" hidden></p>
-          <p class="settings-hint">As fotos são analisadas automaticamente conforme aparecem no slideshow.</p>
-
-          <hr class="settings-divider">
 
           <!-- Áudio -->
-          <p class="settings-sub-heading">🎙 Transcrição de Áudio</p>
-          <p class="settings-hint">Pode usar uma chave diferente da IA de fotos.</p>
+          <div class="settings-sub-card">
+            <p class="settings-sub-heading">🎙 Transcrição de Áudio</p>
+            <p class="settings-hint">Pode usar uma chave diferente da IA de fotos.</p>
 
-          <label class="settings-label" for="cfg-audio-provider">Provedor</label>
-          <select id="cfg-audio-provider" class="settings-select">
-            <option value="">— Selecionar —</option>
-            <option value="openai">OpenAI (Whisper)</option>
-            <option value="groq">Groq (Whisper ultra-rápido)</option>
-            <option value="google">Google (Gemini)</option>
-          </select>
+            <label class="settings-label" for="cfg-audio-provider">Provedor</label>
+            <select id="cfg-audio-provider" class="settings-select">
+              <option value="">— Selecionar —</option>
+              <option value="openai">OpenAI (Whisper)</option>
+              <option value="groq">Groq (Whisper ultra-rápido)</option>
+              <option value="google">Google (Gemini)</option>
+            </select>
 
-          <label class="settings-label" for="cfg-audio-model">Modelo</label>
-          <input type="text" id="cfg-audio-model" class="settings-input" placeholder="ex: whisper-1" autocorrect="off" autocapitalize="none" spellcheck="false">
+            <label class="settings-label" for="cfg-audio-model">Modelo</label>
+            <input type="text" id="cfg-audio-model" class="settings-input" placeholder="ex: whisper-1" autocorrect="off" autocapitalize="none" spellcheck="false">
 
-          <label class="settings-label" for="cfg-audio-key">Chave de API</label>
-          <div class="settings-api-key-row">
-            <input type="password" id="cfg-audio-key" class="settings-input" placeholder="sk-..." autocorrect="off" autocapitalize="none" spellcheck="false">
-            <button type="button" id="btn-audio-key-toggle" class="btn-icon" aria-label="Mostrar/ocultar chave">👁</button>
+            <label class="settings-label" for="cfg-audio-key">Chave de API</label>
+            <div class="settings-api-key-row">
+              <input type="password" id="cfg-audio-key" class="settings-input" placeholder="sk-..." autocorrect="off" autocapitalize="none" spellcheck="false">
+              <button type="button" id="btn-audio-key-toggle" class="btn-icon" aria-label="Mostrar/ocultar chave">👁</button>
+            </div>
+            <button type="button" id="btn-audio-save" class="btn-action">Salvar configuração de áudio</button>
+            <p id="audio-config-status" class="settings-hint" hidden></p>
           </div>
-          <button type="button" id="btn-audio-save" class="btn-action">Salvar configuração de áudio</button>
-          <p id="audio-config-status" class="settings-hint" hidden></p>
-
-          <hr class="settings-divider">
 
           <!-- Supabase -->
-          <p class="settings-sub-heading">🗄 Supabase</p>
-          <p class="settings-hint">Armazena análises, etiquetas e embeddings de busca.</p>
+          <div class="settings-sub-card">
+            <p class="settings-sub-heading">🗄 Supabase</p>
+            <p class="settings-hint">Armazena análises, etiquetas e embeddings de busca.</p>
 
-          <label class="settings-label" for="cfg-sb-url">URL do projeto</label>
-          <input type="url" id="cfg-sb-url" class="settings-input" placeholder="https://xxxx.supabase.co" autocorrect="off" autocapitalize="none" spellcheck="false">
+            <label class="settings-label" for="cfg-sb-url">URL do projeto</label>
+            <input type="url" id="cfg-sb-url" class="settings-input" placeholder="https://xxxx.supabase.co" autocorrect="off" autocapitalize="none" spellcheck="false">
 
-          <label class="settings-label" for="cfg-sb-key">Chave anon — JWT (eyJ...)</label>
-          <div class="settings-api-key-row">
-            <input type="password" id="cfg-sb-key" class="settings-input" placeholder="eyJ..." autocorrect="off" autocapitalize="none" spellcheck="false">
-            <button type="button" id="btn-sb-key-toggle" class="btn-icon" aria-label="Mostrar/ocultar chave">👁</button>
+            <label class="settings-label" for="cfg-sb-key">Chave anon — JWT (eyJ...)</label>
+            <div class="settings-api-key-row">
+              <input type="password" id="cfg-sb-key" class="settings-input" placeholder="eyJ..." autocorrect="off" autocapitalize="none" spellcheck="false">
+              <button type="button" id="btn-sb-key-toggle" class="btn-icon" aria-label="Mostrar/ocultar chave">👁</button>
+            </div>
+            <p class="settings-hint">Dashboard → Settings → API → <strong>anon public</strong> (começa com eyJ)</p>
+            <button type="button" id="btn-sb-save" class="btn-action">Salvar Supabase</button>
+            <p id="sb-config-status" class="settings-hint" hidden></p>
           </div>
-          <p class="settings-hint">Dashboard → Settings → API → <strong>anon public</strong> (começa com eyJ)</p>
-          <button type="button" id="btn-sb-save" class="btn-action">Salvar Supabase</button>
-          <p id="sb-config-status" class="settings-hint" hidden></p>
 
         </div>
       </div>
