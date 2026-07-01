@@ -18,20 +18,21 @@ window.PeopleService = (function () {
     return getAll().find((p) => p.id === id) || null;
   }
 
-  function create({ displayName, alias, birthDate, notes, thumbnailUrl } = {}) {
+  // photoIdentifier: referência à foto (para buscar no nativeThumbCache ao renderizar)
+  function create({ displayName, alias, birthDate, notes, photoIdentifier } = {}) {
     const people = getAll();
     const count  = people.filter((p) => !p.dismissed).length + 1;
     const person = {
-      id:           crypto.randomUUID(),
-      displayName:  displayName  || `Pessoa ${count}`,
-      alias:        alias        || null,
-      birthDate:    birthDate    || null,
-      notes:        notes        || null,
-      thumbnailUrl: thumbnailUrl || null,
-      confirmed:    false,
-      dismissed:    false,
-      createdAt:    new Date().toISOString(),
-      updatedAt:    new Date().toISOString(),
+      id:              crypto.randomUUID(),
+      displayName:     displayName     || `Pessoa ${count}`,
+      alias:           alias           || null,
+      birthDate:       birthDate       || null,
+      notes:           notes           || null,
+      photoIdentifier: photoIdentifier || null, // identifier da foto de origem
+      confirmed:       false,
+      dismissed:       false,
+      createdAt:       new Date().toISOString(),
+      updatedAt:       new Date().toISOString(),
     };
     people.push(person);
     _save(people);
@@ -54,6 +55,28 @@ window.PeopleService = (function () {
     const assoc = getAssociations();
     Object.keys(assoc).forEach((k) => { assoc[k] = assoc[k].filter((pid) => pid !== id); });
     _saveAssociations(assoc);
+  }
+
+  // ── merge: une duplicata com pessoa já identificada ───────────────────────
+  function mergeInto(sourceId, targetId) {
+    if (sourceId === targetId) return;
+    // Move todas as associações de sourceId para targetId
+    const assoc = getAssociations();
+    Object.keys(assoc).forEach((identifier) => {
+      if (assoc[identifier].includes(sourceId)) {
+        assoc[identifier] = assoc[identifier].filter((id) => id !== sourceId);
+        if (!assoc[identifier].includes(targetId)) assoc[identifier].push(targetId);
+      }
+    });
+    _saveAssociations(assoc);
+    // Se o target não tem photoIdentifier ainda, herda do source
+    const source = getById(sourceId);
+    const target = getById(targetId);
+    if (source && target && !target.photoIdentifier && source.photoIdentifier) {
+      update(targetId, { photoIdentifier: source.photoIdentifier });
+    }
+    // Remove a duplicata
+    remove(sourceId);
   }
 
   // ── associações foto ↔ pessoas ────────────────────────────────────────────
@@ -106,32 +129,25 @@ window.PeopleService = (function () {
   // ── criação automática via análise de IA ──────────────────────────────────
   function ensurePeopleFromAnalysis(identifier, peopleCount) {
     if (!peopleCount || peopleCount <= 0) return [];
-
-    // Filtra apenas os não descartados associados a esta foto
-    const existing   = getPeopleForPhoto(identifier).filter((p) => !p.dismissed);
-    const dismissed  = (_getDismissedCounts()[identifier] || 0);
+    const existing  = getPeopleForPhoto(identifier).filter((p) => !p.dismissed);
+    const dismissed = (_getDismissedCounts()[identifier] || 0);
     if (existing.length + dismissed >= peopleCount) return existing;
-
-    // Pega thumbnail desta foto para salvar nos novos registros
-    const thumb = window.nativeThumbCache?.get(identifier) || null;
 
     const created = [];
     const toCreate = peopleCount - existing.length - dismissed;
     for (let i = 0; i < toCreate; i++) {
-      const p = create({ thumbnailUrl: thumb });
+      // Salva só o identifier (string leve), não o base64 completo
+      const p = create({ photoIdentifier: identifier });
       associatePersonToPhoto(identifier, p.id);
       created.push(p);
     }
     return [...existing, ...created];
   }
 
-  // ── descarte (marca como dismissed, não deleta) ───────────────────────────
+  // ── descarte ──────────────────────────────────────────────────────────────
   function dismissPersonFromPhoto(identifier, personId) {
-    // Marca a pessoa como descartada
     update(personId, { dismissed: true, confirmed: false });
-    // Remove associação com a foto
     removePersonFromPhoto(identifier, personId);
-    // Registra +1 descartado para esta foto
     const d = _getDismissedCounts();
     d[identifier] = (d[identifier] || 0) + 1;
     _saveDismissedCounts(d);
@@ -160,18 +176,30 @@ window.PeopleService = (function () {
     }, 'id');
   }
 
-  // ── renderização ──────────────────────────────────────────────────────────
-  function _avatarHtml(person) {
-    // Prioridade: thumbnail salvo no registro → nativeThumbCache → ícone
-    const thumb = person.thumbnailUrl
-      || (window.nativeThumbCache
-        ? (() => { const ph = getPhotosForPerson(person.id); for (const id of ph) { if (window.nativeThumbCache.has(id)) return window.nativeThumbCache.get(id); } return null; })()
-        : null);
-    return thumb
-      ? `<img class="person-avatar" src="${thumb}" alt="${_esc(person.displayName)}">`
-      : `<div class="person-avatar person-avatar--empty">👤</div>`;
+  // ── thumbnail via nativeThumbCache ────────────────────────────────────────
+  function _getThumb(person) {
+    const cache = window.nativeThumbCache;
+    if (!cache) return null;
+    // Tenta o photoIdentifier salvo no registro primeiro
+    if (person.photoIdentifier && cache.has(person.photoIdentifier)) {
+      return cache.get(person.photoIdentifier);
+    }
+    // Fallback: qualquer foto associada que esteja no cache
+    for (const identifier of getPhotosForPerson(person.id)) {
+      if (cache.has(identifier)) return cache.get(identifier);
+    }
+    return null;
   }
 
+  function _avatarHtml(person, size = 40) {
+    const thumb = _getThumb(person);
+    const style = size !== 40 ? ` style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.5)}px"` : '';
+    return thumb
+      ? `<img class="person-avatar" src="${thumb}" alt="${_esc(person.displayName)}"${style}>`
+      : `<div class="person-avatar person-avatar--empty"${style}>👤</div>`;
+  }
+
+  // ── renderização ──────────────────────────────────────────────────────────
   function _buildCard(person, container) {
     const photoCount = getPhotosForPerson(person.id).length;
     const card = document.createElement('div');
@@ -204,7 +232,6 @@ window.PeopleService = (function () {
   function _buildDismissedCard(person, container) {
     const card = document.createElement('div');
     card.className = 'person-card person-card--dismissed';
-    card.dataset.personId = person.id;
     card.innerHTML = `
       ${_avatarHtml(person)}
       <div class="person-info">
@@ -237,7 +264,7 @@ window.PeopleService = (function () {
     const dismissed = all.filter((p) => p.dismissed);
     container.innerHTML = '';
 
-    // Cabeçalho com botão atualizar
+    // Cabeçalho
     const header = document.createElement('div');
     header.className = 'people-list-header';
     header.innerHTML = `<span class="people-list-count">${active.length} pessoa${active.length !== 1 ? 's' : ''}</span><button type="button" class="btn-people-refresh" title="Atualizar lista">↻ Atualizar</button>`;
@@ -250,10 +277,10 @@ window.PeopleService = (function () {
       empty.textContent = 'Nenhuma pessoa identificada ainda. As pessoas são detectadas automaticamente conforme as fotos aparecem no slideshow.';
       container.appendChild(empty);
     } else {
-      active.forEach((person) => container.appendChild(_buildCard(person, container)));
+      active.forEach((p) => container.appendChild(_buildCard(p, container)));
     }
 
-    // Seção de descartados (colapsável)
+    // Seção descartados
     if (dismissed.length) {
       const section = document.createElement('div');
       section.className = 'people-dismissed-section';
@@ -264,10 +291,10 @@ window.PeopleService = (function () {
       const list = document.createElement('div');
       list.className = 'people-dismissed-list hidden';
       toggle.addEventListener('click', () => {
-        const open = list.classList.toggle('hidden');
-        toggle.textContent = (open ? '▶' : '▼') + ` Descartadas (${dismissed.length})`;
+        const nowHidden = list.classList.toggle('hidden');
+        toggle.textContent = (nowHidden ? '▶' : '▼') + ` Descartadas (${dismissed.length})`;
       });
-      dismissed.forEach((person) => list.appendChild(_buildDismissedCard(person, container)));
+      dismissed.forEach((p) => list.appendChild(_buildDismissedCard(p, container)));
       section.appendChild(toggle);
       section.appendChild(list);
       container.appendChild(section);
@@ -278,12 +305,22 @@ window.PeopleService = (function () {
     const person = getById(personId);
     if (!person) return;
 
+    // Lista de pessoas confirmadas para merge (exceto ela mesma)
+    const confirmed = getAll().filter((p) => p.confirmed && p.id !== personId && !p.dismissed);
+
+    const mergeOptions = confirmed.length
+      ? `<label class="settings-label" for="pm-merge">É a mesma pessoa que…</label>
+         <select id="pm-merge" class="settings-select">
+           <option value="">— Nenhuma (manter separado) —</option>
+           ${confirmed.map((p) => `<option value="${p.id}">${_esc(p.displayName)}${p.alias ? ' (' + _esc(p.alias) + ')' : ''}</option>`).join('')}
+         </select>`
+      : '';
+
     const overlay = document.createElement('div');
     overlay.className = 'person-modal-overlay';
-    const thumbHtml = _avatarHtml(person);
     overlay.innerHTML = `
       <div class="person-modal">
-        <div class="person-modal-avatar">${thumbHtml}</div>
+        <div class="person-modal-avatar">${_avatarHtml(person, 64)}</div>
         <h3>Identificar pessoa</h3>
         <label class="settings-label" for="pm-name">Nome</label>
         <input type="text" id="pm-name" class="settings-input" value="${_esc(person.displayName)}" placeholder="Nome da pessoa">
@@ -293,6 +330,7 @@ window.PeopleService = (function () {
         <input type="date" id="pm-birth" class="settings-input" value="${person.birthDate || ''}">
         <label class="settings-label" for="pm-notes">Observações</label>
         <input type="text" id="pm-notes" class="settings-input" value="${_esc(person.notes || '')}" placeholder="Observações (opcional)">
+        ${mergeOptions}
         <div class="person-modal-actions">
           <button type="button" class="btn-action btn-action--secondary" id="pm-cancel">Cancelar</button>
           <button type="button" class="btn-action" id="pm-save">Salvar</button>
@@ -302,14 +340,21 @@ window.PeopleService = (function () {
     document.body.appendChild(overlay);
     overlay.querySelector('#pm-cancel').addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
     overlay.querySelector('#pm-save').addEventListener('click', () => {
-      update(personId, {
-        displayName: overlay.querySelector('#pm-name').value.trim() || person.displayName,
-        alias:       overlay.querySelector('#pm-alias').value.trim() || null,
-        birthDate:   overlay.querySelector('#pm-birth').value || null,
-        notes:       overlay.querySelector('#pm-notes').value.trim() || null,
-        confirmed:   true,
-      });
+      const mergeTarget = overlay.querySelector('#pm-merge')?.value;
+      if (mergeTarget) {
+        // Merge: une fotos desta pessoa com a pessoa já identificada
+        mergeInto(personId, mergeTarget);
+      } else {
+        update(personId, {
+          displayName: overlay.querySelector('#pm-name').value.trim() || person.displayName,
+          alias:       overlay.querySelector('#pm-alias').value.trim() || null,
+          birthDate:   overlay.querySelector('#pm-birth').value || null,
+          notes:       overlay.querySelector('#pm-notes').value.trim() || null,
+          confirmed:   true,
+        });
+      }
       overlay.remove();
       if (onSave) onSave();
     });
@@ -321,7 +366,7 @@ window.PeopleService = (function () {
   }
 
   return {
-    getAll, getById, create, update, remove,
+    getAll, getById, create, update, remove, mergeInto,
     getPeopleForPhoto, associatePersonToPhoto, removePersonFromPhoto, getPhotosForPerson,
     ensurePeopleFromAnalysis, dismissPersonFromPhoto, dismissPersonGlobally, restorePerson,
     renderPeopleList, openEditModal,
