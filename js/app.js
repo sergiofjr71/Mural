@@ -3625,7 +3625,13 @@ function initSettingsSections() {
       toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     };
 
-    applyCollapsed(saved[id] === false);
+    // Use saved state if available; otherwise keep HTML default (collapsed class already set or absent)
+    if (id in saved) {
+      applyCollapsed(saved[id] === false);
+    } else {
+      // Sync aria-expanded with actual DOM state
+      toggle.setAttribute('aria-expanded', section.classList.contains('collapsed') ? 'false' : 'true');
+    }
 
     toggle.addEventListener('click', () => {
       const collapsed = !section.classList.contains('collapsed');
