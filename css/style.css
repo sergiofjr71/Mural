@@ -2394,7 +2394,9 @@ label.btn-choose-photo-folder {
   margin-right: 4px;
 }
 .btn-person-edit,
-.btn-person-dismiss {
+.btn-person-dismiss,
+.btn-person-restore,
+.btn-person-delete {
   background: none;
   border: none;
   cursor: pointer;
@@ -2404,9 +2406,50 @@ label.btn-choose-photo-folder {
   line-height: 1;
   transition: background .15s;
 }
-.btn-person-edit:hover   { background: rgba(255,255,255,.1); }
-.btn-person-dismiss      { color: var(--text-dim); font-size: 13px; font-weight: 700; }
+.btn-person-edit:hover    { background: rgba(255,255,255,.1); }
+.btn-person-dismiss       { color: var(--text-dim); font-size: 13px; font-weight: 700; }
 .btn-person-dismiss:hover { background: rgba(220,60,60,.2); color: #e06060; }
+.btn-person-restore       { color: var(--accent); font-size: 16px; }
+.btn-person-restore:hover { background: rgba(100,160,255,.15); }
+.btn-person-delete:hover  { background: rgba(220,60,60,.2); }
+
+/* cabeçalho da lista de pessoas */
+.people-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.people-list-count { font-size: 12px; color: var(--text-dim); }
+.btn-people-refresh {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background .15s;
+}
+.btn-people-refresh:hover { background: rgba(100,160,255,.1); }
+
+/* seção de descartados */
+.people-dismissed-section { margin-top: 8px; }
+.people-dismissed-toggle {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 6px 2px;
+  width: 100%;
+  text-align: left;
+}
+.people-dismissed-toggle:hover { color: var(--text); }
+.people-dismissed-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.people-dismissed-list.hidden { display: none; }
+.person-card--dismissed { opacity: 0.55; }
+.person-card--dismissed:hover { opacity: 1; }
 
 /* modal de pessoa */
 .person-modal-overlay {
@@ -2427,7 +2470,9 @@ label.btn-choose-photo-folder {
   flex-direction: column;
   gap: 12px;
 }
-.person-modal h3 { margin: 0; font-size: 18px; color: var(--text); }
+.person-modal-avatar { display: flex; justify-content: center; }
+.person-modal-avatar .person-avatar { width: 64px; height: 64px; font-size: 28px; }
+.person-modal h3 { margin: 0; font-size: 18px; color: var(--text); text-align: center; }
 .person-modal-actions { display: flex; gap: 8px; margin-top: 4px; }
 .person-modal-actions .btn-action { flex: 1; }
 
