@@ -710,11 +710,28 @@ async function addLinkedSessionFolder(name, files, { gallerySource = false } = {
 }
 
 function isImageFileName(name) {
+  if (shouldSkipBmpImages() && isBmpFileName(name)) return false;
   return IMAGE_FILE_RE.test(name || '');
+}
+
+function isBmpFileName(name) {
+  return /\.bmp$/i.test(name || '');
+}
+
+function isBmpImageFile(file) {
+  if (!file) return false;
+  const name = file.name || '';
+  const type = (file.type || '').toLowerCase();
+  return isBmpFileName(name) || type === 'image/bmp' || type === 'image/x-ms-bmp' || type.includes('bmp');
+}
+
+function shouldSkipBmpImages() {
+  return isEmbeddedDesktopBrowser();
 }
 
 function isDisplayableImageFile(file) {
   if (!file) return false;
+  if (shouldSkipBmpImages() && isBmpImageFile(file)) return false;
   if (isImageFileName(file.name)) return true;
   return (file.type || '').startsWith('image/');
 }
@@ -1108,10 +1125,7 @@ async function collectImageEntries(dirHandle, folderId, onProgress) {
       for await (const entry of iterateDirectoryEntries(dir)) {
         const entryPath = `${basePath}${entry.name}`;
         if (entry.kind === 'file' && isImageFileName(entry.name)) {
-          entries.push({
-            path: `${folderId}::${entryPath}`,
-            getFile: () => entry.getFile(),
-          });
+          entries.push(`${folderId}::${entryPath}`);
           if (onProgress && entries.length % 100 === 0) {
             onProgress(entries.length);
             await new Promise((resolve) => setTimeout(resolve, 0));
@@ -1136,18 +1150,7 @@ async function getFolderImageEntries(onProgress) {
     // Galeria nativa Capacitor — apenas referências, sem copiar dados
     if (folder.nativeGallerySource && folder.items?.length) {
       for (const item of folder.items) {
-        entries.push({
-          path: `${folder.id}::${item.identifier}`,
-          getFile: async () => ({
-            _nativeIdentifier: item.identifier,
-            _nativeThumb: item.thumb ?? null,
-            _nativeLat: item.lat ?? null,
-            _nativeLon: item.lon ?? null,
-            _nativeDate: item.creationDate ?? null,
-            name: item.name || 'foto.jpg',
-            type: 'image/jpeg',
-          }),
-        });
+        entries.push(`${folder.id}::${item.identifier}`);
       }
       if (onProgress) onProgress(entries.length);
       continue;
@@ -1175,10 +1178,7 @@ async function getFolderImageEntries(onProgress) {
     for (const file of folder.files) {
       if (!isDisplayableImageFile(file)) continue;
       const rel = file.webkitRelativePath || file.name;
-      entries.push({
-        path: `${folder.id}::${rel}`,
-        getFile: async () => file,
-      });
+      entries.push(`${folder.id}::${rel}`);
     }
     if (onProgress) onProgress(entries.length);
   }
@@ -1276,13 +1276,16 @@ function clearAllHiddenFolderPhotos() {
   } catch {}
 }
 
-function shuffleArray(items) {
-  const list = [...items];
+function shuffleArrayInPlace(list) {
   for (let i = list.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [list[i], list[j]] = [list[j], list[i]];
   }
   return list;
+}
+
+function shuffleArray(items) {
+  return shuffleArrayInPlace([...items]);
 }
 
 function saveFolderPlaylist() {
@@ -1324,12 +1327,14 @@ function clearFolderPhotoState() {
 async function syncFolderPlaylistWithDisk() {
   try {
     const entries = await getFolderImageEntries();
-    const onDisk = new Set(entries.map((entry) => entry.path));
+    const onDisk = new Set(entries);
     const kept = State.folderPlaylist.filter((path) => onDisk.has(path));
     const known = new Set(kept);
-    const added = entries.map((entry) => entry.path).filter((path) => !known.has(path));
+    const added = entries.filter((path) => !known.has(path));
     if (added.length || kept.length !== State.folderPlaylist.length) {
-      State.folderPlaylist = [...kept, ...shuffleArray(added)];
+      const merged = [...kept, ...added];
+      shuffleArrayInPlace(merged);
+      State.folderPlaylist = merged;
       saveFolderPlaylist();
     }
     pruneHiddenFolderPhotos([...onDisk]);
@@ -1354,9 +1359,10 @@ async function refreshFolderPlaylist({ notify = true, resetIndex = true, onProgr
     return 0;
   }
 
-  const paths = entries.map((entry) => entry.path);
+  const paths = [...entries];
+  shuffleArrayInPlace(paths);
   pruneHiddenFolderPhotos(paths);
-  State.folderPlaylist = shuffleArray(paths);
+  State.folderPlaylist = paths;
   State.folderPlaylistDate = getTodayKey();
   saveFolderPlaylist();
 
@@ -2067,7 +2073,10 @@ async function handleGalleryPickerInput(input) {
     return;
   }
 
-  const files = Array.from(input.files || []).filter((file) => isDisplayableImageFile(file));
+  const files = [];
+  for (const file of input.files || []) {
+    if (isDisplayableImageFile(file)) files.push(file);
+  }
   input.value = '';
   if (!files.length) {
     showToast('Nenhuma foto selecionada');
@@ -2102,10 +2111,13 @@ async function handleFolderFallbackInput(input) {
     return;
   }
 
-  const files = Array.from(input.files || []);
+  const files = [];
+  for (const file of input.files || []) {
+    if (isDisplayableImageFile(file)) files.push(file);
+  }
   input.value = '';
   if (!files.length) {
-    showToast('Nenhum arquivo selecionado');
+    showToast('Nenhuma imagem compatível selecionada');
     return;
   }
 
@@ -2158,26 +2170,28 @@ function setupFolderPickerUi() {
 }
 
 async function applySessionFolder(files, { name, gallerySource = false } = {}) {
-  const allFiles = Array.from(files);
+  const allFiles = Array.isArray(files) ? files : Array.from(files);
   if (!allFiles.length) return false;
 
-  const root = name
-    || allFiles[0].webkitRelativePath?.split('/')[0]
-    || allFiles[0].name
-    || 'Pasta';
-
   const imageFiles = allFiles.filter((file) => isDisplayableImageFile(file));
+  if (!imageFiles.length) {
+    showToast('Nenhuma imagem compatível selecionada');
+    return false;
+  }
+
+  const root = name
+    || imageFiles[0].webkitRelativePath?.split('/')[0]
+    || imageFiles[0].name
+    || 'Pasta';
 
   folderPickInProgress = true;
   try {
-    const added = await addLinkedSessionFolder(root, allFiles, { gallerySource });
+    const added = await addLinkedSessionFolder(root, imageFiles, { gallerySource });
     if (!added) return false;
 
     await afterFolderAdded({ notify: true });
 
-    if (!imageFiles.length) {
-      showToast('Nenhuma imagem compatível selecionada (jpg, png, gif, webp, heic)');
-    } else if (gallerySource) {
+    if (gallerySource) {
       showToast(`${imageFiles.length} foto${imageFiles.length === 1 ? '' : 's'} da galeria salva${imageFiles.length === 1 ? '' : 's'} neste dispositivo`);
     } else if (!supportsDirectoryPicker()) {
       showToast('Pasta válida só nesta sessão — abra em Chrome/Edge (https) para salvar');
@@ -4400,6 +4414,7 @@ async function init() {
     applyNightMode();
     initAmbientLightSensor();
     verifyBrowserStyles();
+    initAISettings();
   } catch (e) {
     console.error('init falhou:', e);
     showToast('Erro ao iniciar — recarregue com Cmd+Shift+R');
@@ -4512,6 +4527,207 @@ function _sampleAmbientLight() {
 }
 
 function initAmbientLightSensor() { /* sensor arranca ao ligar o modo noturno */ }
+
+// ─── IA — CONFIGURAÇÕES & ANÁLISE ────────────────────────────────────────────
+function initAISettings() {
+  // Carrega valores salvos nos campos
+  const cfg = window.AIConfigService?.getConfig() || {};
+  const sb  = window.SupabaseClient?.getConfig()   || {};
+
+  const $ = (id) => document.getElementById(id);
+
+  const providerSel = $('cfg-ai-provider');
+  const modelInput  = $('cfg-ai-model');
+  const keyInput    = $('cfg-ai-key');
+  const rateSel     = $('cfg-ai-rate');
+  const batchSel    = $('cfg-ai-batch');
+  const sbUrlInput  = $('cfg-sb-url');
+  const sbKeyInput  = $('cfg-sb-key');
+
+  if (!providerSel) return; // painel de IA não está no DOM
+
+  // Preenche campos salvos
+  if (cfg.provider)  providerSel.value = cfg.provider;
+  if (cfg.model)     modelInput.value  = cfg.model;
+  if (cfg.apiKey)    keyInput.value    = cfg.apiKey;
+  if (cfg.rateLimit !== undefined) rateSel.value  = String(cfg.rateLimit);
+  if (cfg.batchSize !== undefined) batchSel.value = String(cfg.batchSize);
+  if (sb.url)     sbUrlInput.value = sb.url;
+  if (sb.anonKey) sbKeyInput.value = sb.anonKey;
+
+  // Modelo padrão ao trocar provedor
+  providerSel.addEventListener('change', () => {
+    if (!modelInput.value) {
+      modelInput.value = window.AIConfigService?.getDefaultModel(providerSel.value) || '';
+    }
+  });
+
+  // Mostrar/ocultar chave AI
+  $('btn-ai-key-toggle')?.addEventListener('click', () => {
+    keyInput.type = keyInput.type === 'password' ? 'text' : 'password';
+  });
+
+  // Mostrar/ocultar chave Supabase
+  $('btn-sb-key-toggle')?.addEventListener('click', () => {
+    sbKeyInput.type = sbKeyInput.type === 'password' ? 'text' : 'password';
+  });
+
+  // Salvar configuração AI
+  $('btn-ai-save')?.addEventListener('click', () => {
+    const provider  = providerSel.value;
+    const model     = modelInput.value.trim();
+    const apiKey    = keyInput.value.trim();
+    const rateLimit = parseInt(rateSel.value, 10);
+    const batchSize = parseInt(batchSel.value, 10);
+
+    if (!provider) { _aiStatus('Selecione um provedor.', false); return; }
+    if (!apiKey)   { _aiStatus('Informe a chave de API.', false); return; }
+
+    window.AIConfigService?.saveConfig({ provider, model, apiKey, rateLimit, batchSize });
+    _aiStatus('Configuração salva!', true);
+    _updateAIStartButton();
+  });
+
+  // Salvar Supabase
+  $('btn-sb-save')?.addEventListener('click', async () => {
+    const url    = sbUrlInput.value.trim();
+    const anonKey = sbKeyInput.value.trim();
+    if (!url || !anonKey) { _sbStatus('Preencha URL e chave.', false); return; }
+
+    window.SupabaseClient?.saveConfig(url, anonKey);
+    _sbStatus('Testando conexão…', true);
+
+    const result = await window.SupabaseClient?.testConnection();
+    if (result?.ok) {
+      _sbStatus('Supabase conectado!', true);
+    } else {
+      _sbStatus(`Erro: ${result?.error || 'falha na conexão'}`, false);
+    }
+  });
+
+  // Botão Analisar fotos
+  $('btn-ai-start')?.addEventListener('click', () => {
+    if (window.PhotoAnalysisService?.isRunning()) {
+      window.PhotoAnalysisService.pause();
+      _updateAIStartButton();
+      return;
+    }
+    _startPhotoAnalysis();
+  });
+
+  $('btn-ai-stop')?.addEventListener('click', () => {
+    window.PhotoAnalysisService?.pause();
+    _updateAIStartButton();
+  });
+
+  // Lista de pessoas
+  const peopleList = $('people-list');
+  if (peopleList) window.PeopleService?.renderPeopleList(peopleList);
+
+  _updateAIStartButton();
+}
+
+function _aiStatus(msg, ok) {
+  const el = document.getElementById('ai-config-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = ok ? 'var(--accent)' : '#ff6b6b';
+  el.hidden = false;
+  setTimeout(() => { el.hidden = true; }, 4000);
+}
+
+function _sbStatus(msg, ok) {
+  const el = document.getElementById('sb-config-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = ok ? 'var(--accent)' : '#ff6b6b';
+  el.hidden = false;
+}
+
+function _updateAIStartButton() {
+  const startBtn = document.getElementById('btn-ai-start');
+  const stopBtn  = document.getElementById('btn-ai-stop');
+  if (!startBtn) return;
+
+  const isConfigured = window.AIConfigService?.isConfigured();
+  const hasPhotos    = (State.folderPlaylist?.length || 0) > 0;
+
+  startBtn.disabled = !isConfigured || !hasPhotos;
+
+  const running = window.PhotoAnalysisService?.isRunning();
+  startBtn.textContent = running ? 'Pausar análise' : 'Analisar fotos';
+  if (stopBtn) stopBtn.classList.toggle('hidden', !running);
+}
+
+function _startPhotoAnalysis() {
+  const identifiers = (State.folderPlaylist || [])
+    .map((path) => {
+      const parts = path.split('::');
+      return parts.length > 1 ? parts[1] : null;
+    })
+    .filter(Boolean);
+
+  if (!identifiers.length) {
+    showToast('Nenhuma foto na lista para analisar.');
+    return;
+  }
+
+  const progressEl = document.getElementById('ai-progress');
+  const fillEl     = document.getElementById('ai-progress-fill');
+  const labelEl    = document.getElementById('ai-progress-label');
+  if (progressEl) progressEl.classList.remove('hidden');
+
+  window.PhotoAnalysisService?.start(identifiers, {
+    onProgress(done, total) {
+      if (!total) return;
+      const pct = Math.round((done / total) * 100);
+      if (fillEl)  fillEl.style.width = `${pct}%`;
+      if (labelEl) labelEl.textContent = `${done} / ${total} analisadas (${pct}%)`;
+      if (done >= total && progressEl) {
+        setTimeout(() => progressEl.classList.add('hidden'), 3000);
+      }
+      _updateAIStartButton();
+    },
+    onResult(identifier, result) {
+      // Atualiza etiqueta da foto atual se for a mesma
+      if (clockPhotoPlaylist?.[clockPhotoIndex]?.includes(identifier)) {
+        _enrichCurrentPhotoMeta(identifier);
+      }
+      // Atualiza lista de pessoas se IA detectou pessoas
+      if (result.people_count > 0) {
+        window.PeopleService?.ensurePeopleFromAnalysis(identifier, result.people_count);
+        const peopleList = document.getElementById('people-list');
+        if (peopleList) window.PeopleService?.renderPeopleList(peopleList);
+      }
+    },
+  });
+  _updateAIStartButton();
+}
+
+// Enriquece a etiqueta atual com dados da IA (chamado quando foto muda)
+function _enrichCurrentPhotoMeta(identifier) {
+  if (!identifier || !window.PhotoAnalysisService) return;
+  const result = window.PhotoAnalysisService.getResultFor(identifier);
+  if (!result) return;
+
+  // Notifica o sistema de metadados para re-renderizar com dados da IA
+  const overlay = document.getElementById('clock-photo-meta');
+  if (!overlay) return;
+
+  // Injeta subtítulo de IA se não houver localização EXIF
+  const existing = overlay.querySelector('.meta-location, .meta-desc');
+  if (!existing) {
+    const aiMeta = overlay.querySelector('.meta-ai') || document.createElement('div');
+    aiMeta.className = 'meta-ai';
+    const parts = [];
+    if (result.occasion) parts.push(`Possível ${result.occasion.toLowerCase()}`);
+    if (result.scene)    parts.push(result.scene);
+    const people = window.PeopleService?.getPeopleForPhoto(identifier) || [];
+    if (people.length)   parts.push(people.map((p) => p.displayName).join(', '));
+    aiMeta.textContent = parts.join(' · ');
+    if (parts.length) overlay.appendChild(aiMeta);
+  }
+}
 
 // ─── SERVICE WORKER ───────────────────────────
 function shouldUseServiceWorker() {

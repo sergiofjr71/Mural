@@ -292,6 +292,97 @@
         </div>
       </div>
 
+      <!-- IA -->
+      <div class="settings-section" data-section="ai">
+        <button type="button" class="settings-section-toggle" aria-expanded="false" aria-controls="settings-section-ai">
+          <h3>Inteligência Artificial</h3>
+          <span class="settings-section-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div id="settings-section-ai" class="settings-section-body" hidden>
+
+          <!-- Provedor e chave -->
+          <p class="settings-hint">Configure o provedor de IA para análise automática das fotos. A chave fica salva apenas neste dispositivo.</p>
+
+          <label class="settings-label" for="cfg-ai-provider">Provedor</label>
+          <select id="cfg-ai-provider" class="settings-select">
+            <option value="">— Selecionar —</option>
+            <option value="anthropic">Anthropic (Claude)</option>
+            <option value="openai">OpenAI (GPT-4o / GPT-4o-mini)</option>
+            <option value="google">Google (Gemini)</option>
+          </select>
+
+          <label class="settings-label" for="cfg-ai-model">Modelo</label>
+          <input type="text" id="cfg-ai-model" class="settings-input" placeholder="ex: claude-haiku-4-5-20251001" autocorrect="off" autocapitalize="none" spellcheck="false">
+
+          <label class="settings-label" for="cfg-ai-key">Chave de API</label>
+          <div class="settings-api-key-row">
+            <input type="password" id="cfg-ai-key" class="settings-input" placeholder="sk-..." autocorrect="off" autocapitalize="none" spellcheck="false">
+            <button type="button" id="btn-ai-key-toggle" class="btn-icon" aria-label="Mostrar/ocultar chave">👁</button>
+          </div>
+          <button type="button" id="btn-ai-save" class="btn-action">Salvar configuração</button>
+          <p id="ai-config-status" class="settings-hint" hidden></p>
+
+          <hr class="settings-divider">
+
+          <!-- Supabase -->
+          <p class="settings-hint">Conecte ao Supabase para armazenar análises, etiquetas e embeddings de busca.</p>
+          <label class="settings-label" for="cfg-sb-url">URL do projeto Supabase</label>
+          <input type="url" id="cfg-sb-url" class="settings-input" placeholder="https://xxxx.supabase.co" autocorrect="off" autocapitalize="none" spellcheck="false">
+
+          <label class="settings-label" for="cfg-sb-key">Chave anon (pública)</label>
+          <div class="settings-api-key-row">
+            <input type="password" id="cfg-sb-key" class="settings-input" placeholder="eyJ..." autocorrect="off" autocapitalize="none" spellcheck="false">
+            <button type="button" id="btn-sb-key-toggle" class="btn-icon" aria-label="Mostrar/ocultar chave">👁</button>
+          </div>
+          <button type="button" id="btn-sb-save" class="btn-action">Salvar Supabase</button>
+          <p id="sb-config-status" class="settings-hint" hidden></p>
+
+          <hr class="settings-divider">
+
+          <!-- Rate limit e análise -->
+          <label class="settings-label" for="cfg-ai-rate">Limite de análises por minuto</label>
+          <select id="cfg-ai-rate" class="settings-select">
+            <option value="0">Sem limite</option>
+            <option value="5">5 por minuto</option>
+            <option value="10">10 por minuto</option>
+            <option value="20" selected>20 por minuto</option>
+            <option value="60">60 por minuto</option>
+          </select>
+
+          <label class="settings-label" for="cfg-ai-batch">Fotos por lote</label>
+          <select id="cfg-ai-batch" class="settings-select">
+            <option value="1">1 (mais lento, mais seguro)</option>
+            <option value="5" selected>5</option>
+            <option value="10">10</option>
+            <option value="20">20 (mais rápido)</option>
+          </select>
+
+          <div class="settings-ai-actions">
+            <button type="button" id="btn-ai-start" class="btn-action" disabled>Analisar fotos</button>
+            <button type="button" id="btn-ai-stop" class="btn-action btn-action--secondary hidden">Pausar análise</button>
+          </div>
+          <div id="ai-progress" class="ai-progress hidden" aria-live="polite">
+            <div class="ai-progress-bar"><div id="ai-progress-fill" class="ai-progress-fill"></div></div>
+            <p id="ai-progress-label" class="ai-progress-label"></p>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Pessoas -->
+      <div class="settings-section" data-section="people">
+        <button type="button" class="settings-section-toggle" aria-expanded="false" aria-controls="settings-section-people">
+          <h3>Pessoas</h3>
+          <span class="settings-section-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div id="settings-section-people" class="settings-section-body" hidden>
+          <p class="settings-hint">Pessoas identificadas automaticamente pela IA. Clique para editar nome e aniversário.</p>
+          <div id="people-list" class="people-list" aria-live="polite">
+            <p class="settings-hint" id="people-empty">Nenhuma pessoa identificada ainda. Execute a análise de fotos primeiro.</p>
+          </div>
+        </div>
+      </div>
+
       <div class="settings-section" data-section="display">
         <button type="button" class="settings-section-toggle" aria-expanded="true" aria-controls="settings-section-display">
           <h3>Display</h3>
@@ -380,6 +471,10 @@
       document.head.appendChild(s);
     }
   </script>
+  <script src="js/services/SupabaseClient.js" defer></script>
+  <script src="js/services/AIConfigService.js" defer></script>
+  <script src="js/services/PhotoAnalysisService.js" defer></script>
+  <script src="js/services/PeopleService.js" defer></script>
   <script src="js/app.js" defer></script>
 </body>
 </html>
