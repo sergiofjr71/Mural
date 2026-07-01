@@ -87,10 +87,10 @@ html, body {
   align-items: center;
   justify-content: flex-start;
   width: fit-content;
-  max-width: calc(420px + clamp(20px, 3vw, 36px) * 2);
+  max-width: calc(420px + clamp(5px, 0.75vw, 9px) * 2);
   height: auto;
   align-self: flex-start;
-  padding: 0 clamp(20px, 3vw, 36px) 5px;
+  padding: 0 clamp(5px, 0.75vw, 9px) 5px;
   min-width: 0;
   overflow: visible;
   box-sizing: border-box;
