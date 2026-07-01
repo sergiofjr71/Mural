@@ -4622,7 +4622,7 @@ function initAISettings() {
       const url     = sbUrlInput.value.trim();
       const anonKey = sbKeyInput.value.trim();
       if (!url || !anonKey) { _sbStatus('Preencha URL e chave.', false); return; }
-      if (!anonKey.startsWith('eyJ')) { _sbStatus('Use a chave JWT (eyJ...), não a publishable key.', false); return; }
+      if (anonKey.length < 20) { _sbStatus('Chave inválida — verifique as configurações do Supabase.', false); return; }
       window.SupabaseClient?.saveConfig(url, anonKey);
       _sbStatus('Testando conexão…', true);
       const result = await window.SupabaseClient?.testConnection();
