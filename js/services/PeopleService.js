@@ -164,6 +164,17 @@ window.PeopleService = (function () {
   }
 
   // ── renderização ──────────────────────────────────────────────────────────
+  function _getThumbForPerson(personId) {
+    const photos = getPhotosForPerson(personId);
+    if (!photos.length) return null;
+    const cache = window.nativeThumbCache;
+    if (!cache) return null;
+    for (const identifier of photos) {
+      if (cache.has(identifier)) return cache.get(identifier);
+    }
+    return null;
+  }
+
   function renderPeopleList(container) {
     const people = getAll();
     container.innerHTML = '';
@@ -175,11 +186,16 @@ window.PeopleService = (function () {
 
     people.forEach((person) => {
       const photoCount = getPhotosForPerson(person.id).length;
+      const thumb = _getThumbForPerson(person.id);
+      const avatarHtml = thumb
+        ? `<img class="person-avatar" src="${thumb}" alt="${_esc(person.displayName)}">`
+        : `<div class="person-avatar person-avatar--empty">👤</div>`;
+
       const card = document.createElement('div');
       card.className = 'person-card' + (person.confirmed ? ' person-card--confirmed' : '');
       card.dataset.personId = person.id;
       card.innerHTML = `
-        <div class="person-avatar">${person.confirmed ? '👤' : '❓'}</div>
+        ${avatarHtml}
         <div class="person-info">
           <div class="person-name">${_esc(person.displayName)}</div>
           <div class="person-meta">${person.confirmed ? '✔ Confirmado' : 'Aguardando identificação'}${person.alias ? ' · ' + _esc(person.alias) : ''}</div>
