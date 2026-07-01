@@ -3193,6 +3193,11 @@ async function updateClockPhoto() {
   const metaReqId = ++clockPhotoMetaRequest;
   const metaPromise = prefetchClockPhotoMeta(capturedIndex);
 
+  // Dispara análise de IA em background (só se ainda não analisada)
+  const currentPath = getVisibleFolderPlaylist()[capturedIndex] || '';
+  const currentIdentifier = currentPath.includes('::') ? currentPath.split('::')[1] : null;
+  if (currentIdentifier) setTimeout(() => _triggerPhotoAnalysisOnDisplay(currentIdentifier), 500);
+
   // Revoga blob da imagem que vai entrar (incoming, não mais necessário)
   if (clockPhotoObjectUrls[incomingKey]) {
     revokeObjectUrl(clockPhotoObjectUrls[incomingKey]);
@@ -4543,15 +4548,11 @@ function initAISettings() {
   const providerSel = $('cfg-ai-provider');
   const modelInput  = $('cfg-ai-model');
   const keyInput    = $('cfg-ai-key');
-  const rateSel     = $('cfg-ai-rate');
-  const batchSel    = $('cfg-ai-batch');
 
   if (providerSel) {
-    if (cfg.provider)                     providerSel.value = cfg.provider;
-    if (cfg.model)                        modelInput.value  = cfg.model;
-    if (cfg.apiKey)                       keyInput.value    = cfg.apiKey;
-    if (cfg.rateLimit !== undefined)      rateSel.value     = String(cfg.rateLimit);
-    if (cfg.batchSize !== undefined)      batchSel.value    = String(cfg.batchSize);
+    if (cfg.provider) providerSel.value = cfg.provider;
+    if (cfg.model)    modelInput.value  = cfg.model;
+    if (cfg.apiKey)   keyInput.value    = cfg.apiKey;
 
     providerSel.addEventListener('change', () => {
       if (!modelInput.value)
@@ -4563,30 +4564,13 @@ function initAISettings() {
     });
 
     $('btn-ai-save')?.addEventListener('click', () => {
-      const provider  = providerSel.value;
-      const model     = modelInput.value.trim();
-      const apiKey    = keyInput.value.trim();
-      const rateLimit = parseInt(rateSel.value, 10);
-      const batchSize = parseInt(batchSel.value, 10);
+      const provider = providerSel.value;
+      const model    = modelInput.value.trim();
+      const apiKey   = keyInput.value.trim();
       if (!provider) { _aiStatus('Selecione um provedor.', false); return; }
       if (!apiKey)   { _aiStatus('Informe a chave de API.', false); return; }
-      window.AIConfigService?.saveConfig({ provider, model, apiKey, rateLimit, batchSize });
+      window.AIConfigService?.saveConfig({ provider, model, apiKey });
       _aiStatus('Configuração de fotos salva!', true);
-      _updateAIStartButton();
-    });
-
-    $('btn-ai-start')?.addEventListener('click', () => {
-      if (window.PhotoAnalysisService?.isRunning()) {
-        window.PhotoAnalysisService.pause();
-        _updateAIStartButton();
-        return;
-      }
-      _startPhotoAnalysis();
-    });
-
-    $('btn-ai-stop')?.addEventListener('click', () => {
-      window.PhotoAnalysisService?.pause();
-      _updateAIStartButton();
     });
   }
 
@@ -4649,8 +4633,6 @@ function initAISettings() {
   // Lista de pessoas
   const peopleList = $('people-list');
   if (peopleList) window.PeopleService?.renderPeopleList(peopleList);
-
-  _updateAIStartButton();
 }
 
 function _aiStatus(msg, ok) {
@@ -4679,89 +4661,69 @@ function _sbStatus(msg, ok) {
   el.hidden = false;
 }
 
-function _updateAIStartButton() {
-  const startBtn = document.getElementById('btn-ai-start');
-  const stopBtn  = document.getElementById('btn-ai-stop');
-  if (!startBtn) return;
-
-  const isConfigured = window.AIConfigService?.isConfigured();
-  const hasPhotos    = (State.folderPlaylist?.length || 0) > 0;
-
-  startBtn.disabled = !isConfigured || !hasPhotos;
-
-  const running = window.PhotoAnalysisService?.isRunning();
-  startBtn.textContent = running ? 'Pausar análise' : 'Analisar fotos';
-  if (stopBtn) stopBtn.classList.toggle('hidden', !running);
-}
-
-function _startPhotoAnalysis() {
-  const identifiers = (State.folderPlaylist || [])
-    .map((path) => {
-      const parts = path.split('::');
-      return parts.length > 1 ? parts[1] : null;
-    })
-    .filter(Boolean);
-
-  if (!identifiers.length) {
-    showToast('Nenhuma foto na lista para analisar.');
+// Disparado automaticamente quando uma foto aparece no slideshow
+function _triggerPhotoAnalysisOnDisplay(identifier) {
+  if (!identifier) return;
+  if (!window.AIConfigService?.isConfigured()) return;
+  if (window.PhotoAnalysisService?.getResultFor(identifier)) {
+    // Já analisada — apenas enriquece a exibição
+    _enrichCurrentPhotoMeta(identifier);
     return;
   }
-
-  const progressEl = document.getElementById('ai-progress');
-  const fillEl     = document.getElementById('ai-progress-fill');
-  const labelEl    = document.getElementById('ai-progress-label');
-  if (progressEl) progressEl.classList.remove('hidden');
-
-  window.PhotoAnalysisService?.start(identifiers, {
-    onProgress(done, total) {
-      if (!total) return;
-      const pct = Math.round((done / total) * 100);
-      if (fillEl)  fillEl.style.width = `${pct}%`;
-      if (labelEl) labelEl.textContent = `${done} / ${total} analisadas (${pct}%)`;
-      if (done >= total && progressEl) {
-        setTimeout(() => progressEl.classList.add('hidden'), 3000);
-      }
-      _updateAIStartButton();
-    },
-    onResult(identifier, result) {
-      // Atualiza etiqueta da foto atual se for a mesma
-      if (clockPhotoPlaylist?.[clockPhotoIndex]?.includes(identifier)) {
-        _enrichCurrentPhotoMeta(identifier);
-      }
-      // Atualiza lista de pessoas se IA detectou pessoas
-      if (result.people_count > 0) {
-        window.PeopleService?.ensurePeopleFromAnalysis(identifier, result.people_count);
-        const peopleList = document.getElementById('people-list');
-        if (peopleList) window.PeopleService?.renderPeopleList(peopleList);
-      }
-    },
-  });
-  _updateAIStartButton();
+  // Analisa em background sem bloquear o slideshow
+  void _analyzePhotoInBackground(identifier);
 }
 
-// Enriquece a etiqueta atual com dados da IA (chamado quando foto muda)
+async function _analyzePhotoInBackground(identifier) {
+  // Usa thumb do cache (populado por loadFullGalleryNative)
+  const thumb = window.nativeThumbCache?.get(identifier);
+  if (!thumb) return;
+  const base64 = thumb.split(',')[1];
+  if (!base64) return;
+
+  try {
+    const result = await window.AIConfigService.analyzePhoto(base64);
+
+    // Persiste no localStorage
+    window.PhotoAnalysisService?.saveResultLocal(identifier, result);
+
+    // Enriquece overlay se ainda é a foto atual
+    _enrichCurrentPhotoMeta(identifier);
+
+    // Detecta pessoas
+    if ((result.people_count || 0) > 0) {
+      window.PeopleService?.ensurePeopleFromAnalysis(identifier, result.people_count);
+      const peopleList = document.getElementById('people-list');
+      if (peopleList) window.PeopleService?.renderPeopleList(peopleList);
+    }
+
+    // Sync Supabase
+    if (window.SupabaseClient?.isConfigured()) {
+      window.PhotoAnalysisService?.syncToSupabase(identifier, result).catch(() => {});
+    }
+  } catch (e) {
+    console.warn('AI on-display analysis failed:', identifier, e.message);
+  }
+}
+
+// Enriquece a etiqueta com dados já disponíveis da IA
 function _enrichCurrentPhotoMeta(identifier) {
   if (!identifier || !window.PhotoAnalysisService) return;
   const result = window.PhotoAnalysisService.getResultFor(identifier);
   if (!result) return;
 
-  // Notifica o sistema de metadados para re-renderizar com dados da IA
   const overlay = document.getElementById('clock-photo-meta');
   if (!overlay) return;
 
-  // Injeta subtítulo de IA se não houver localização EXIF
-  const existing = overlay.querySelector('.meta-location, .meta-desc');
-  if (!existing) {
-    const aiMeta = overlay.querySelector('.meta-ai') || document.createElement('div');
-    aiMeta.className = 'meta-ai';
-    const parts = [];
-    if (result.occasion) parts.push(`Possível ${result.occasion.toLowerCase()}`);
-    if (result.scene)    parts.push(result.scene);
-    const people = window.PeopleService?.getPeopleForPhoto(identifier) || [];
-    if (people.length)   parts.push(people.map((p) => p.displayName).join(', '));
-    aiMeta.textContent = parts.join(' · ');
-    if (parts.length) overlay.appendChild(aiMeta);
-  }
+  const aiMeta = overlay.querySelector('.meta-ai') || document.createElement('div');
+  aiMeta.className = 'meta-ai';
+  const parts = [];
+  if (result.occasion) parts.push(`Possível ${result.occasion.toLowerCase()}`);
+  if (result.scene)    parts.push(result.scene);
+  const people = window.PeopleService?.getPeopleForPhoto(identifier) || [];
+  if (people.length)   parts.push(people.map((p) => p.displayName).join(', '));
+  aiMeta.textContent = parts.join(' · ');
+  if (parts.length && !overlay.contains(aiMeta)) overlay.appendChild(aiMeta);
 }
 
 // ─── SERVICE WORKER ───────────────────────────

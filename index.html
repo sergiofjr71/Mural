@@ -323,34 +323,9 @@
             <button type="button" id="btn-ai-key-toggle" class="btn-icon" aria-label="Mostrar/ocultar chave">👁</button>
           </div>
 
-          <label class="settings-label" for="cfg-ai-rate">Limite de análises por minuto</label>
-          <select id="cfg-ai-rate" class="settings-select">
-            <option value="0">Sem limite</option>
-            <option value="5">5 por minuto</option>
-            <option value="10">10 por minuto</option>
-            <option value="20" selected>20 por minuto</option>
-            <option value="60">60 por minuto</option>
-          </select>
-
-          <label class="settings-label" for="cfg-ai-batch">Fotos por lote</label>
-          <select id="cfg-ai-batch" class="settings-select">
-            <option value="1">1 (mais lento, mais seguro)</option>
-            <option value="5" selected>5</option>
-            <option value="10">10</option>
-            <option value="20">20 (mais rápido)</option>
-          </select>
-
           <button type="button" id="btn-ai-save" class="btn-action">Salvar configuração de fotos</button>
           <p id="ai-config-status" class="settings-hint" hidden></p>
-
-          <div class="settings-ai-actions">
-            <button type="button" id="btn-ai-start" class="btn-action" disabled>Analisar fotos</button>
-            <button type="button" id="btn-ai-stop" class="btn-action btn-action--secondary hidden">Pausar</button>
-          </div>
-          <div id="ai-progress" class="ai-progress hidden" aria-live="polite">
-            <div class="ai-progress-bar"><div id="ai-progress-fill" class="ai-progress-fill"></div></div>
-            <p id="ai-progress-label" class="ai-progress-label"></p>
-          </div>
+          <p class="settings-hint">As fotos são analisadas automaticamente conforme aparecem no slideshow.</p>
 
           <hr class="settings-divider">
 

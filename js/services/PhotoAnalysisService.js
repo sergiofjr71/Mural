@@ -224,6 +224,17 @@ window.PhotoAnalysisService = (function () {
     }
   }
 
+  function saveResultLocal(identifier, result) {
+    saveResult(identifier, { ...result, analyzedAt: new Date().toISOString() });
+    const done = getDoneSet();
+    done.add(identifier);
+    saveDone(done);
+  }
+
+  async function syncToSupabase(identifier, result) {
+    return _syncToSupabase(identifier, result);
+  }
+
   return {
     start, pause, resume, stop,
     isRunning,
@@ -232,5 +243,7 @@ window.PhotoAnalysisService = (function () {
     getResultFor,
     getQueue,
     getDoneSet,
+    saveResultLocal,
+    syncToSupabase,
   };
 })();
