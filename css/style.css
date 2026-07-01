@@ -2241,6 +2241,14 @@ label.btn-choose-photo-folder {
 #btn-photo-source-cancel:hover { color: var(--text); border-color: var(--text-dim); }
 
 /* ── IA & Pessoas ──────────────────────────────────────── */
+.settings-sub-heading {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 4px 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--bg3);
+}
 .settings-label {
   display: block;
   font-size: 12px;
