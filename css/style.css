@@ -103,7 +103,7 @@ html, body {
   text-align: center;
   width: 100%;
   max-width: 420px;
-  margin-top: 20px;
+  margin-top: 4px;
   box-sizing: border-box;
 }
 
@@ -412,6 +412,15 @@ body.clock-nav-visible .clock-photo-nav:not(:disabled) .clock-photo-nav-icon,
   transform: translateX(1px);
 }
 
+#clock-time-wrap {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  width: fit-content;
+  line-height: 1;
+  overflow: visible;
+}
+
 #clock-time {
   font-size: clamp(52px, calc(12vw + 6px), 136px);
   font-weight: 100;
@@ -422,12 +431,15 @@ body.clock-nav-visible .clock-photo-nav:not(:disabled) .clock-photo-nav-icon,
 }
 
 #clock-seconds {
-  font-size: clamp(18px, 4vw, 36px);
-  font-weight: 200;
-  color: var(--text-mid);
-  letter-spacing: 2px;
-  margin-top: 4px;
+  font-size: clamp(20px, 3.5vw, 36px);
+  font-weight: 100;
+  color: #ffffff;
+  letter-spacing: 0;
   font-variant-numeric: tabular-nums;
+  line-height: 1;
+  padding-bottom: 0.12em;
+  margin-left: 6px;
+  flex-shrink: 0;
 }
 
 #clock-date {
