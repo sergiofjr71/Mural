@@ -1199,6 +1199,7 @@ input[type="file"] {
   transition: background 0.2s;
 }
 .btn-action:active { background: var(--accent-dim); }
+.btn-action:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
 .btn-danger { background: var(--danger); }
 .btn-fullscreen { background: var(--bg3); border: 1px solid rgba(255,255,255,0.1); color: var(--text); width: 100%; }
 

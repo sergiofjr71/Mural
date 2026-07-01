@@ -4548,28 +4548,47 @@ function initAISettings() {
   const providerSel = $('cfg-ai-provider');
   const modelInput  = $('cfg-ai-model');
   const keyInput    = $('cfg-ai-key');
+  const aiSaveBtn   = $('btn-ai-save');
 
-  if (providerSel) {
+  if (providerSel && aiSaveBtn) {
     if (cfg.provider) providerSel.value = cfg.provider;
     if (cfg.model)    modelInput.value  = cfg.model;
     if (cfg.apiKey)   keyInput.value    = cfg.apiKey;
 
+    const aiSaved = [cfg.provider || '', cfg.model || '', cfg.apiKey || ''];
+    const aiGetters = [
+      () => providerSel.value,
+      () => modelInput.value.trim(),
+      () => keyInput.value.trim(),
+    ];
+    aiSaveBtn.disabled = true;
+    const checkAIDirty = () => {
+      aiSaveBtn.disabled = !aiGetters.some((fn, i) => fn() !== aiSaved[i]);
+    };
+    [providerSel, modelInput, keyInput].forEach((el) => {
+      el.addEventListener('input', checkAIDirty);
+      el.addEventListener('change', checkAIDirty);
+    });
+
     providerSel.addEventListener('change', () => {
       if (!modelInput.value)
         modelInput.value = window.AIConfigService?.getDefaultModel(providerSel.value) || '';
+      checkAIDirty();
     });
 
     $('btn-ai-key-toggle')?.addEventListener('click', () => {
       keyInput.type = keyInput.type === 'password' ? 'text' : 'password';
     });
 
-    $('btn-ai-save')?.addEventListener('click', () => {
+    aiSaveBtn.addEventListener('click', () => {
       const provider = providerSel.value;
       const model    = modelInput.value.trim();
       const apiKey   = keyInput.value.trim();
       if (!provider) { _aiStatus('Selecione um provedor.', false); return; }
       if (!apiKey)   { _aiStatus('Informe a chave de API.', false); return; }
       window.AIConfigService?.saveConfig({ provider, model, apiKey });
+      aiSaved[0] = provider; aiSaved[1] = model; aiSaved[2] = apiKey;
+      aiSaveBtn.disabled = true;
       _aiStatus('Configuração de fotos salva!', true);
     });
   }
@@ -4579,28 +4598,47 @@ function initAISettings() {
   const audioProviderSel = $('cfg-audio-provider');
   const audioModelInput  = $('cfg-audio-model');
   const audioKeyInput    = $('cfg-audio-key');
+  const audioSaveBtn     = $('btn-audio-save');
 
-  if (audioProviderSel) {
+  if (audioProviderSel && audioSaveBtn) {
     if (audioCfg.provider) audioProviderSel.value = audioCfg.provider;
     if (audioCfg.model)    audioModelInput.value  = audioCfg.model;
     if (audioCfg.apiKey)   audioKeyInput.value    = audioCfg.apiKey;
 
+    const audSaved = [audioCfg.provider || '', audioCfg.model || '', audioCfg.apiKey || ''];
+    const audGetters = [
+      () => audioProviderSel.value,
+      () => audioModelInput.value.trim(),
+      () => audioKeyInput.value.trim(),
+    ];
+    audioSaveBtn.disabled = true;
+    const checkAudDirty = () => {
+      audioSaveBtn.disabled = !audGetters.some((fn, i) => fn() !== audSaved[i]);
+    };
+    [audioProviderSel, audioModelInput, audioKeyInput].forEach((el) => {
+      el.addEventListener('input', checkAudDirty);
+      el.addEventListener('change', checkAudDirty);
+    });
+
     audioProviderSel.addEventListener('change', () => {
       if (!audioModelInput.value)
         audioModelInput.value = window.AIConfigService?.getDefaultAudioModel(audioProviderSel.value) || '';
+      checkAudDirty();
     });
 
     $('btn-audio-key-toggle')?.addEventListener('click', () => {
       audioKeyInput.type = audioKeyInput.type === 'password' ? 'text' : 'password';
     });
 
-    $('btn-audio-save')?.addEventListener('click', () => {
+    audioSaveBtn.addEventListener('click', () => {
       const provider = audioProviderSel.value;
       const model    = audioModelInput.value.trim();
       const apiKey   = audioKeyInput.value.trim();
       if (!provider) { _audioStatus('Selecione um provedor.', false); return; }
       if (!apiKey)   { _audioStatus('Informe a chave de API.', false); return; }
       window.AIConfigService?.saveAudioConfig({ provider, model, apiKey });
+      audSaved[0] = provider; audSaved[1] = model; audSaved[2] = apiKey;
+      audioSaveBtn.disabled = true;
       _audioStatus('Configuração de áudio salva!', true);
     });
   }
@@ -4609,21 +4647,37 @@ function initAISettings() {
   const sb         = window.SupabaseClient?.getConfig() || {};
   const sbUrlInput = $('cfg-sb-url');
   const sbKeyInput = $('cfg-sb-key');
+  const sbSaveBtn  = $('btn-sb-save');
 
-  if (sbUrlInput) {
+  if (sbUrlInput && sbSaveBtn) {
     if (sb.url)     sbUrlInput.value = sb.url;
     if (sb.anonKey) sbKeyInput.value = sb.anonKey;
+
+    const sbSaved = [sb.url || '', sb.anonKey || ''];
+    sbSaveBtn.disabled = true;
+    const checkSbDirty = () => {
+      sbSaveBtn.disabled = !(
+        sbUrlInput.value.trim() !== sbSaved[0] ||
+        sbKeyInput.value.trim() !== sbSaved[1]
+      );
+    };
+    [sbUrlInput, sbKeyInput].forEach((el) => {
+      el.addEventListener('input', checkSbDirty);
+      el.addEventListener('change', checkSbDirty);
+    });
 
     $('btn-sb-key-toggle')?.addEventListener('click', () => {
       sbKeyInput.type = sbKeyInput.type === 'password' ? 'text' : 'password';
     });
 
-    $('btn-sb-save')?.addEventListener('click', async () => {
+    sbSaveBtn.addEventListener('click', async () => {
       const url     = sbUrlInput.value.trim();
       const anonKey = sbKeyInput.value.trim();
       if (!url || !anonKey) { _sbStatus('Preencha URL e chave.', false); return; }
       if (anonKey.length < 20) { _sbStatus('Chave inválida — verifique as configurações do Supabase.', false); return; }
       window.SupabaseClient?.saveConfig(url, anonKey);
+      sbSaved[0] = url; sbSaved[1] = anonKey;
+      sbSaveBtn.disabled = true;
       _sbStatus('Testando conexão…', true);
       const result = await window.SupabaseClient?.testConnection();
       _sbStatus(result?.ok ? 'Supabase conectado!' : `Erro: ${result?.error || 'falha na conexão'}`, !!result?.ok);
