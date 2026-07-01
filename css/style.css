@@ -2361,10 +2361,9 @@ label.btn-choose-photo-folder {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 10px 12px;
-  cursor: pointer;
   transition: background .2s;
 }
-.person-card:hover { background: rgba(255,255,255,.1); }
+.person-card--confirmed { border-color: rgba(100,180,255,.25); }
 .person-avatar {
   width: 40px;
   height: 40px;
@@ -2380,12 +2379,32 @@ label.btn-choose-photo-folder {
 .person-info { flex: 1; min-width: 0; }
 .person-name { font-size: 15px; font-weight: 600; color: var(--text); }
 .person-meta { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.person-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
 .person-photo-count {
   font-size: 12px;
   color: var(--accent);
   font-weight: 600;
-  flex-shrink: 0;
+  margin-right: 4px;
 }
+.btn-person-edit,
+.btn-person-dismiss {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  line-height: 1;
+  transition: background .15s;
+}
+.btn-person-edit:hover   { background: rgba(255,255,255,.1); }
+.btn-person-dismiss      { color: var(--text-dim); font-size: 13px; font-weight: 700; }
+.btn-person-dismiss:hover { background: rgba(220,60,60,.2); color: #e06060; }
 
 /* modal de pessoa */
 .person-modal-overlay {

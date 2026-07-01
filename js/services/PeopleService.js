@@ -5,8 +5,9 @@
  * Dados ficam no localStorage (e opcionalmente sincronizados ao Supabase).
  */
 window.PeopleService = (function () {
-  const PEOPLE_KEY = 'mural_people';
-  const ASSOC_KEY  = 'mural_photo_people'; // Map photoIdentifier → [personId, ...]
+  const PEOPLE_KEY    = 'mural_people';
+  const ASSOC_KEY     = 'mural_photo_people';    // Map photoIdentifier → [personId, ...]
+  const DISMISSED_KEY = 'mural_dismissed_people'; // Map photoIdentifier → count descartado
 
   // ── CRUD local ────────────────────────────────────────────────────────────
   function getAll() {
@@ -31,6 +32,7 @@ window.PeopleService = (function () {
       birthDate:   birthDate   || null,
       notes:       notes       || null,
       confirmed:   false,
+      dismissed:   false,
       createdAt:   new Date().toISOString(),
       updatedAt:   new Date().toISOString(),
     };
@@ -51,8 +53,14 @@ window.PeopleService = (function () {
   }
 
   function remove(id) {
+    // Remove person and all their associations
     const people = getAll().filter((p) => p.id !== id);
     _save(people);
+    const assoc = getAssociations();
+    Object.keys(assoc).forEach((identifier) => {
+      assoc[identifier] = assoc[identifier].filter((pid) => pid !== id);
+    });
+    _saveAssociations(assoc);
   }
 
   // ── associação foto ↔ pessoas ─────────────────────────────────────────────
@@ -70,7 +78,7 @@ window.PeopleService = (function () {
     return ids.map((id) => getById(id)).filter(Boolean);
   }
 
-  function associatePersonToPhoto(identifier, personId, { confirmed = false } = {}) {
+  function associatePersonToPhoto(identifier, personId) {
     const assoc = getAssociations();
     if (!assoc[identifier]) assoc[identifier] = [];
     if (!assoc[identifier].includes(personId)) {
@@ -94,15 +102,45 @@ window.PeopleService = (function () {
       .map(([identifier]) => identifier);
   }
 
+  // ── descarte por foto ─────────────────────────────────────────────────────
+  // Armazena quantas pessoas foram descartadas por foto, para não recriar.
+  function getDismissed() {
+    try { return JSON.parse(localStorage.getItem(DISMISSED_KEY) || '{}'); }
+    catch { return {}; }
+  }
+  function _saveDismissed(d) {
+    try { localStorage.setItem(DISMISSED_KEY, JSON.stringify(d)); } catch { /* quota */ }
+  }
+
+  function getDismissedCountForPhoto(identifier) {
+    return getDismissed()[identifier] || 0;
+  }
+
+  function dismissPersonFromPhoto(identifier, personId) {
+    // Remove associação
+    removePersonFromPhoto(identifier, personId);
+    // Se a pessoa não tem mais fotos e não foi confirmada, remove inteiramente
+    const person = getById(personId);
+    if (person && !person.confirmed && getPhotosForPerson(personId).length === 0) {
+      remove(personId);
+    }
+    // Incrementa contador de descartados para esta foto
+    const d = getDismissed();
+    d[identifier] = (d[identifier] || 0) + 1;
+    _saveDismissed(d);
+  }
+
   // ── criação automática baseada na análise de IA ───────────────────────────
-  // Quando a IA detecta N pessoas, cria slots "Pessoa X" se ainda não existem.
   function ensurePeopleFromAnalysis(identifier, peopleCount) {
     if (!peopleCount || peopleCount <= 0) return [];
-    const existing = getPeopleForPhoto(identifier);
-    if (existing.length >= peopleCount) return existing;
+    const existing  = getPeopleForPhoto(identifier);
+    const dismissed = getDismissedCountForPhoto(identifier);
+    // Total de pessoas "aceitas" = existentes + descartadas ≥ total detectado → não cria mais
+    if (existing.length + dismissed >= peopleCount) return existing;
 
     const created = [];
-    for (let i = existing.length; i < peopleCount; i++) {
+    const toCreate = peopleCount - existing.length - dismissed;
+    for (let i = 0; i < toCreate; i++) {
       const p = create();
       associatePersonToPhoto(identifier, p.id);
       created.push(p);
@@ -131,29 +169,67 @@ window.PeopleService = (function () {
     container.innerHTML = '';
 
     if (!people.length) {
-      container.innerHTML = '<p class="settings-hint" id="people-empty">Nenhuma pessoa identificada ainda. Execute a análise de fotos primeiro.</p>';
+      container.innerHTML = '<p class="settings-hint" id="people-empty">Nenhuma pessoa identificada ainda. As pessoas são detectadas automaticamente conforme as fotos aparecem no slideshow.</p>';
       return;
     }
 
     people.forEach((person) => {
       const photoCount = getPhotosForPerson(person.id).length;
       const card = document.createElement('div');
-      card.className = 'person-card';
+      card.className = 'person-card' + (person.confirmed ? ' person-card--confirmed' : '');
       card.dataset.personId = person.id;
       card.innerHTML = `
-        <div class="person-avatar">👤</div>
+        <div class="person-avatar">${person.confirmed ? '👤' : '❓'}</div>
         <div class="person-info">
           <div class="person-name">${_esc(person.displayName)}</div>
-          <div class="person-meta">${person.birthDate ? '🎂 ' + _formatBirthDate(person.birthDate) : 'Sem aniversário'}${person.alias ? ' · ' + _esc(person.alias) : ''}</div>
+          <div class="person-meta">${person.confirmed ? '✔ Confirmado' : 'Aguardando identificação'}${person.alias ? ' · ' + _esc(person.alias) : ''}</div>
         </div>
-        <div class="person-photo-count">${photoCount} foto${photoCount !== 1 ? 's' : ''}</div>
+        <div class="person-actions">
+          <span class="person-photo-count">${photoCount} foto${photoCount !== 1 ? 's' : ''}</span>
+          <button type="button" class="btn-person-edit" title="Identificar">✏️</button>
+          <button type="button" class="btn-person-dismiss" title="Descartar">✕</button>
+        </div>
       `;
-      card.addEventListener('click', () => openEditModal(person.id));
+
+      card.querySelector('.btn-person-edit').addEventListener('click', (e) => {
+        e.stopPropagation();
+        openEditModal(person.id, () => renderPeopleList(container));
+      });
+      card.querySelector('.btn-person-dismiss').addEventListener('click', (e) => {
+        e.stopPropagation();
+        _confirmDiscard(person, container);
+      });
+
       container.appendChild(card);
     });
   }
 
-  function openEditModal(personId) {
+  function _confirmDiscard(person, container) {
+    const overlay = document.createElement('div');
+    overlay.className = 'person-modal-overlay';
+    overlay.innerHTML = `
+      <div class="person-modal">
+        <h3>Descartar pessoa</h3>
+        <p class="settings-hint" style="margin:8px 0 16px">O que deseja fazer com <strong>${_esc(person.displayName)}</strong>?</p>
+        <div class="person-modal-actions" style="flex-direction:column;gap:8px">
+          <button type="button" class="btn-action btn-action--secondary" id="pd-cancel" style="width:100%">Cancelar</button>
+          <button type="button" class="btn-action btn-action--secondary" id="pd-remove-all" style="width:100%">Remover de todas as fotos</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#pd-cancel').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+    overlay.querySelector('#pd-remove-all').addEventListener('click', () => {
+      remove(person.id);
+      overlay.remove();
+      renderPeopleList(container);
+    });
+  }
+
+  function openEditModal(personId, onSave) {
     const person = getById(personId);
     if (!person) return;
 
@@ -161,7 +237,7 @@ window.PeopleService = (function () {
     overlay.className = 'person-modal-overlay';
     overlay.innerHTML = `
       <div class="person-modal">
-        <h3>Editar pessoa</h3>
+        <h3>Identificar pessoa</h3>
         <label class="settings-label" for="pm-name">Nome</label>
         <input type="text" id="pm-name" class="settings-input" value="${_esc(person.displayName)}" placeholder="Nome da pessoa">
         <label class="settings-label" for="pm-alias">Apelido</label>
@@ -182,16 +258,16 @@ window.PeopleService = (function () {
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
 
     overlay.querySelector('#pm-save').addEventListener('click', () => {
+      const newName = overlay.querySelector('#pm-name').value.trim();
       update(personId, {
-        displayName: overlay.querySelector('#pm-name').value.trim() || person.displayName,
+        displayName: newName || person.displayName,
         alias:       overlay.querySelector('#pm-alias').value.trim() || null,
         birthDate:   overlay.querySelector('#pm-birth').value || null,
         notes:       overlay.querySelector('#pm-notes').value.trim() || null,
         confirmed:   true,
       });
       overlay.remove();
-      const list = document.getElementById('people-list');
-      if (list) renderPeopleList(list);
+      if (onSave) onSave();
     });
   }
 
@@ -209,7 +285,7 @@ window.PeopleService = (function () {
   return {
     getAll, getById, create, update, remove,
     getPeopleForPhoto, associatePersonToPhoto, removePersonFromPhoto, getPhotosForPerson,
-    ensurePeopleFromAnalysis,
+    ensurePeopleFromAnalysis, dismissPersonFromPhoto,
     renderPeopleList, openEditModal,
   };
 })();
