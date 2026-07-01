@@ -292,16 +292,15 @@
         </div>
       </div>
 
-      <!-- IA -->
-      <div class="settings-section collapsed" data-section="ai">
-        <button type="button" class="settings-section-toggle" aria-expanded="false" aria-controls="settings-section-ai">
-          <h3>Inteligência Artificial</h3>
+      <!-- IA para Fotos -->
+      <div class="settings-section collapsed" data-section="ai-photo">
+        <button type="button" class="settings-section-toggle" aria-expanded="false" aria-controls="settings-section-ai-photo">
+          <h3>IA — Análise de Fotos</h3>
           <span class="settings-section-chevron" aria-hidden="true">▾</span>
         </button>
-        <div id="settings-section-ai" class="settings-section-body">
+        <div id="settings-section-ai-photo" class="settings-section-body">
 
-          <!-- Provedor e chave -->
-          <p class="settings-hint">Configure o provedor de IA para análise automática das fotos. A chave fica salva apenas neste dispositivo.</p>
+          <p class="settings-hint">Provedor de IA com suporte a visão para análise automática das fotos. A chave fica salva apenas neste dispositivo.</p>
 
           <label class="settings-label" for="cfg-ai-provider">Provedor</label>
           <select id="cfg-ai-provider" class="settings-select">
@@ -321,27 +320,11 @@
             <input type="password" id="cfg-ai-key" class="settings-input" placeholder="sk-..." autocorrect="off" autocapitalize="none" spellcheck="false">
             <button type="button" id="btn-ai-key-toggle" class="btn-icon" aria-label="Mostrar/ocultar chave">👁</button>
           </div>
-          <button type="button" id="btn-ai-save" class="btn-action">Salvar configuração</button>
+          <button type="button" id="btn-ai-save" class="btn-action">Salvar configuração de fotos</button>
           <p id="ai-config-status" class="settings-hint" hidden></p>
 
           <hr class="settings-divider">
 
-          <!-- Supabase -->
-          <p class="settings-hint">Conecte ao Supabase para armazenar análises, etiquetas e embeddings de busca.</p>
-          <label class="settings-label" for="cfg-sb-url">URL do projeto Supabase</label>
-          <input type="url" id="cfg-sb-url" class="settings-input" placeholder="https://xxxx.supabase.co" autocorrect="off" autocapitalize="none" spellcheck="false">
-
-          <label class="settings-label" for="cfg-sb-key">Chave anon (pública)</label>
-          <div class="settings-api-key-row">
-            <input type="password" id="cfg-sb-key" class="settings-input" placeholder="eyJ..." autocorrect="off" autocapitalize="none" spellcheck="false">
-            <button type="button" id="btn-sb-key-toggle" class="btn-icon" aria-label="Mostrar/ocultar chave">👁</button>
-          </div>
-          <button type="button" id="btn-sb-save" class="btn-action">Salvar Supabase</button>
-          <p id="sb-config-status" class="settings-hint" hidden></p>
-
-          <hr class="settings-divider">
-
-          <!-- Rate limit e análise -->
           <label class="settings-label" for="cfg-ai-rate">Limite de análises por minuto</label>
           <select id="cfg-ai-rate" class="settings-select">
             <option value="0">Sem limite</option>
@@ -367,6 +350,63 @@
             <div class="ai-progress-bar"><div id="ai-progress-fill" class="ai-progress-fill"></div></div>
             <p id="ai-progress-label" class="ai-progress-label"></p>
           </div>
+
+        </div>
+      </div>
+
+      <!-- IA para Áudio -->
+      <div class="settings-section collapsed" data-section="ai-audio">
+        <button type="button" class="settings-section-toggle" aria-expanded="false" aria-controls="settings-section-ai-audio">
+          <h3>IA — Transcrição de Áudio</h3>
+          <span class="settings-section-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div id="settings-section-ai-audio" class="settings-section-body">
+
+          <p class="settings-hint">Provedor para transcrição de notas de voz em texto. Pode usar uma chave diferente da IA de fotos.</p>
+
+          <label class="settings-label" for="cfg-audio-provider">Provedor</label>
+          <select id="cfg-audio-provider" class="settings-select">
+            <option value="">— Selecionar —</option>
+            <option value="openai">OpenAI (Whisper)</option>
+            <option value="groq">Groq (Whisper ultra-rápido)</option>
+            <option value="google">Google (Gemini)</option>
+          </select>
+
+          <label class="settings-label" for="cfg-audio-model">Modelo</label>
+          <input type="text" id="cfg-audio-model" class="settings-input" placeholder="ex: whisper-1" autocorrect="off" autocapitalize="none" spellcheck="false">
+
+          <label class="settings-label" for="cfg-audio-key">Chave de API</label>
+          <div class="settings-api-key-row">
+            <input type="password" id="cfg-audio-key" class="settings-input" placeholder="sk-..." autocorrect="off" autocapitalize="none" spellcheck="false">
+            <button type="button" id="btn-audio-key-toggle" class="btn-icon" aria-label="Mostrar/ocultar chave">👁</button>
+          </div>
+          <button type="button" id="btn-audio-save" class="btn-action">Salvar configuração de áudio</button>
+          <p id="audio-config-status" class="settings-hint" hidden></p>
+
+        </div>
+      </div>
+
+      <!-- Supabase -->
+      <div class="settings-section collapsed" data-section="supabase">
+        <button type="button" class="settings-section-toggle" aria-expanded="false" aria-controls="settings-section-supabase">
+          <h3>Supabase</h3>
+          <span class="settings-section-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div id="settings-section-supabase" class="settings-section-body">
+
+          <p class="settings-hint">Conecte ao Supabase para armazenar análises, etiquetas e embeddings de busca.</p>
+
+          <label class="settings-label" for="cfg-sb-url">URL do projeto</label>
+          <input type="url" id="cfg-sb-url" class="settings-input" placeholder="https://xxxx.supabase.co" autocorrect="off" autocapitalize="none" spellcheck="false">
+
+          <label class="settings-label" for="cfg-sb-key">Chave anon — JWT (eyJ...)</label>
+          <div class="settings-api-key-row">
+            <input type="password" id="cfg-sb-key" class="settings-input" placeholder="eyJ..." autocorrect="off" autocapitalize="none" spellcheck="false">
+            <button type="button" id="btn-sb-key-toggle" class="btn-icon" aria-label="Mostrar/ocultar chave">👁</button>
+          </div>
+          <p class="settings-hint">Encontre em: Dashboard → Settings → API → <strong>anon public</strong> (começa com eyJ)</p>
+          <button type="button" id="btn-sb-save" class="btn-action">Salvar Supabase</button>
+          <p id="sb-config-status" class="settings-hint" hidden></p>
 
         </div>
       </div>

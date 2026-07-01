@@ -4536,95 +4536,115 @@ function initAmbientLightSensor() { /* sensor arranca ao ligar o modo noturno */
 
 // ─── IA — CONFIGURAÇÕES & ANÁLISE ────────────────────────────────────────────
 function initAISettings() {
-  // Carrega valores salvos nos campos
-  const cfg = window.AIConfigService?.getConfig() || {};
-  const sb  = window.SupabaseClient?.getConfig()   || {};
-
   const $ = (id) => document.getElementById(id);
 
+  // ── IA de Fotos ───────────────────────────────────────────────────────────
+  const cfg         = window.AIConfigService?.getConfig() || {};
   const providerSel = $('cfg-ai-provider');
   const modelInput  = $('cfg-ai-model');
   const keyInput    = $('cfg-ai-key');
   const rateSel     = $('cfg-ai-rate');
   const batchSel    = $('cfg-ai-batch');
-  const sbUrlInput  = $('cfg-sb-url');
-  const sbKeyInput  = $('cfg-sb-key');
 
-  if (!providerSel) return; // painel de IA não está no DOM
+  if (providerSel) {
+    if (cfg.provider)                     providerSel.value = cfg.provider;
+    if (cfg.model)                        modelInput.value  = cfg.model;
+    if (cfg.apiKey)                       keyInput.value    = cfg.apiKey;
+    if (cfg.rateLimit !== undefined)      rateSel.value     = String(cfg.rateLimit);
+    if (cfg.batchSize !== undefined)      batchSel.value    = String(cfg.batchSize);
 
-  // Preenche campos salvos
-  if (cfg.provider)  providerSel.value = cfg.provider;
-  if (cfg.model)     modelInput.value  = cfg.model;
-  if (cfg.apiKey)    keyInput.value    = cfg.apiKey;
-  if (cfg.rateLimit !== undefined) rateSel.value  = String(cfg.rateLimit);
-  if (cfg.batchSize !== undefined) batchSel.value = String(cfg.batchSize);
-  if (sb.url)     sbUrlInput.value = sb.url;
-  if (sb.anonKey) sbKeyInput.value = sb.anonKey;
+    providerSel.addEventListener('change', () => {
+      if (!modelInput.value)
+        modelInput.value = window.AIConfigService?.getDefaultModel(providerSel.value) || '';
+    });
 
-  // Modelo padrão ao trocar provedor
-  providerSel.addEventListener('change', () => {
-    if (!modelInput.value) {
-      modelInput.value = window.AIConfigService?.getDefaultModel(providerSel.value) || '';
-    }
-  });
+    $('btn-ai-key-toggle')?.addEventListener('click', () => {
+      keyInput.type = keyInput.type === 'password' ? 'text' : 'password';
+    });
 
-  // Mostrar/ocultar chave AI
-  $('btn-ai-key-toggle')?.addEventListener('click', () => {
-    keyInput.type = keyInput.type === 'password' ? 'text' : 'password';
-  });
-
-  // Mostrar/ocultar chave Supabase
-  $('btn-sb-key-toggle')?.addEventListener('click', () => {
-    sbKeyInput.type = sbKeyInput.type === 'password' ? 'text' : 'password';
-  });
-
-  // Salvar configuração AI
-  $('btn-ai-save')?.addEventListener('click', () => {
-    const provider  = providerSel.value;
-    const model     = modelInput.value.trim();
-    const apiKey    = keyInput.value.trim();
-    const rateLimit = parseInt(rateSel.value, 10);
-    const batchSize = parseInt(batchSel.value, 10);
-
-    if (!provider) { _aiStatus('Selecione um provedor.', false); return; }
-    if (!apiKey)   { _aiStatus('Informe a chave de API.', false); return; }
-
-    window.AIConfigService?.saveConfig({ provider, model, apiKey, rateLimit, batchSize });
-    _aiStatus('Configuração salva!', true);
-    _updateAIStartButton();
-  });
-
-  // Salvar Supabase
-  $('btn-sb-save')?.addEventListener('click', async () => {
-    const url    = sbUrlInput.value.trim();
-    const anonKey = sbKeyInput.value.trim();
-    if (!url || !anonKey) { _sbStatus('Preencha URL e chave.', false); return; }
-
-    window.SupabaseClient?.saveConfig(url, anonKey);
-    _sbStatus('Testando conexão…', true);
-
-    const result = await window.SupabaseClient?.testConnection();
-    if (result?.ok) {
-      _sbStatus('Supabase conectado!', true);
-    } else {
-      _sbStatus(`Erro: ${result?.error || 'falha na conexão'}`, false);
-    }
-  });
-
-  // Botão Analisar fotos
-  $('btn-ai-start')?.addEventListener('click', () => {
-    if (window.PhotoAnalysisService?.isRunning()) {
-      window.PhotoAnalysisService.pause();
+    $('btn-ai-save')?.addEventListener('click', () => {
+      const provider  = providerSel.value;
+      const model     = modelInput.value.trim();
+      const apiKey    = keyInput.value.trim();
+      const rateLimit = parseInt(rateSel.value, 10);
+      const batchSize = parseInt(batchSel.value, 10);
+      if (!provider) { _aiStatus('Selecione um provedor.', false); return; }
+      if (!apiKey)   { _aiStatus('Informe a chave de API.', false); return; }
+      window.AIConfigService?.saveConfig({ provider, model, apiKey, rateLimit, batchSize });
+      _aiStatus('Configuração de fotos salva!', true);
       _updateAIStartButton();
-      return;
-    }
-    _startPhotoAnalysis();
-  });
+    });
 
-  $('btn-ai-stop')?.addEventListener('click', () => {
-    window.PhotoAnalysisService?.pause();
-    _updateAIStartButton();
-  });
+    $('btn-ai-start')?.addEventListener('click', () => {
+      if (window.PhotoAnalysisService?.isRunning()) {
+        window.PhotoAnalysisService.pause();
+        _updateAIStartButton();
+        return;
+      }
+      _startPhotoAnalysis();
+    });
+
+    $('btn-ai-stop')?.addEventListener('click', () => {
+      window.PhotoAnalysisService?.pause();
+      _updateAIStartButton();
+    });
+  }
+
+  // ── IA de Áudio ───────────────────────────────────────────────────────────
+  const audioCfg         = window.AIConfigService?.getAudioConfig() || {};
+  const audioProviderSel = $('cfg-audio-provider');
+  const audioModelInput  = $('cfg-audio-model');
+  const audioKeyInput    = $('cfg-audio-key');
+
+  if (audioProviderSel) {
+    if (audioCfg.provider) audioProviderSel.value = audioCfg.provider;
+    if (audioCfg.model)    audioModelInput.value  = audioCfg.model;
+    if (audioCfg.apiKey)   audioKeyInput.value    = audioCfg.apiKey;
+
+    audioProviderSel.addEventListener('change', () => {
+      if (!audioModelInput.value)
+        audioModelInput.value = window.AIConfigService?.getDefaultAudioModel(audioProviderSel.value) || '';
+    });
+
+    $('btn-audio-key-toggle')?.addEventListener('click', () => {
+      audioKeyInput.type = audioKeyInput.type === 'password' ? 'text' : 'password';
+    });
+
+    $('btn-audio-save')?.addEventListener('click', () => {
+      const provider = audioProviderSel.value;
+      const model    = audioModelInput.value.trim();
+      const apiKey   = audioKeyInput.value.trim();
+      if (!provider) { _audioStatus('Selecione um provedor.', false); return; }
+      if (!apiKey)   { _audioStatus('Informe a chave de API.', false); return; }
+      window.AIConfigService?.saveAudioConfig({ provider, model, apiKey });
+      _audioStatus('Configuração de áudio salva!', true);
+    });
+  }
+
+  // ── Supabase ──────────────────────────────────────────────────────────────
+  const sb         = window.SupabaseClient?.getConfig() || {};
+  const sbUrlInput = $('cfg-sb-url');
+  const sbKeyInput = $('cfg-sb-key');
+
+  if (sbUrlInput) {
+    if (sb.url)     sbUrlInput.value = sb.url;
+    if (sb.anonKey) sbKeyInput.value = sb.anonKey;
+
+    $('btn-sb-key-toggle')?.addEventListener('click', () => {
+      sbKeyInput.type = sbKeyInput.type === 'password' ? 'text' : 'password';
+    });
+
+    $('btn-sb-save')?.addEventListener('click', async () => {
+      const url     = sbUrlInput.value.trim();
+      const anonKey = sbKeyInput.value.trim();
+      if (!url || !anonKey) { _sbStatus('Preencha URL e chave.', false); return; }
+      if (!anonKey.startsWith('eyJ')) { _sbStatus('Use a chave JWT (eyJ...), não a publishable key.', false); return; }
+      window.SupabaseClient?.saveConfig(url, anonKey);
+      _sbStatus('Testando conexão…', true);
+      const result = await window.SupabaseClient?.testConnection();
+      _sbStatus(result?.ok ? 'Supabase conectado!' : `Erro: ${result?.error || 'falha na conexão'}`, !!result?.ok);
+    });
+  }
 
   // Lista de pessoas
   const peopleList = $('people-list');
@@ -4635,6 +4655,15 @@ function initAISettings() {
 
 function _aiStatus(msg, ok) {
   const el = document.getElementById('ai-config-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = ok ? 'var(--accent)' : '#ff6b6b';
+  el.hidden = false;
+  setTimeout(() => { el.hidden = true; }, 4000);
+}
+
+function _audioStatus(msg, ok) {
+  const el = document.getElementById('audio-config-status');
   if (!el) return;
   el.textContent = msg;
   el.style.color = ok ? 'var(--accent)' : '#ff6b6b';

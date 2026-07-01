@@ -9,17 +9,28 @@ window.AIConfigService = (function () {
     provider:  'mural_ai_provider',
     model:     'mural_ai_model',
     apiKey:    'mural_ai_key',
-    rateLimit: 'mural_ai_rate',   // análises por minuto (0 = sem limite)
+    rateLimit: 'mural_ai_rate',
     batchSize: 'mural_ai_batch',
   };
 
-  // Modelos padrão por provedor
+  const AUDIO_KEYS = {
+    provider: 'mural_audio_provider',
+    model:    'mural_audio_model',
+    apiKey:   'mural_audio_key',
+  };
+
   const DEFAULT_MODELS = {
     anthropic: 'claude-haiku-4-5-20251001',
     openai:    'gpt-4o-mini',
     google:    'gemini-1.5-flash',
     xai:       'grok-2-vision-1212',
     mistral:   'pixtral-12b-2409',
+  };
+
+  const DEFAULT_AUDIO_MODELS = {
+    openai: 'whisper-1',
+    groq:   'whisper-large-v3',
+    google: 'gemini-1.5-flash',
   };
 
   function get(key, fallback = '') {
@@ -51,6 +62,115 @@ window.AIConfigService = (function () {
 
   function getDefaultModel(provider) {
     return DEFAULT_MODELS[provider] || '';
+  }
+
+  // ── Configuração de áudio ────────────────────────────────────────────────
+  function getAudioConfig() {
+    return {
+      provider: get(AUDIO_KEYS.provider),
+      model:    get(AUDIO_KEYS.model),
+      apiKey:   get(AUDIO_KEYS.apiKey),
+    };
+  }
+
+  function saveAudioConfig({ provider, model, apiKey }) {
+    if (provider !== undefined) localStorage.setItem(AUDIO_KEYS.provider, provider);
+    if (model    !== undefined) localStorage.setItem(AUDIO_KEYS.model,    model);
+    if (apiKey   !== undefined) localStorage.setItem(AUDIO_KEYS.apiKey,   apiKey);
+  }
+
+  function isAudioConfigured() {
+    const { provider, apiKey } = getAudioConfig();
+    return !!provider && apiKey.length > 8;
+  }
+
+  function getDefaultAudioModel(provider) {
+    return DEFAULT_AUDIO_MODELS[provider] || '';
+  }
+
+  // ── Transcrição de áudio ────────────────────────────────────────────────
+  // Recebe um Blob de áudio (m4a/webm/mp3) e retorna o texto transcrito.
+  async function transcribeAudio(audioBlob) {
+    const { provider, model, apiKey } = getAudioConfig();
+    if (!provider || !apiKey) throw new Error('IA de áudio não configurada');
+
+    if (provider === 'openai') return _transcribeOpenAI(audioBlob, model, apiKey);
+    if (provider === 'groq')   return _transcribeGroq(audioBlob, model, apiKey);
+    if (provider === 'google') return _transcribeGoogle(audioBlob, model, apiKey);
+    throw new Error(`Provedor de áudio desconhecido: ${provider}`);
+  }
+
+  async function _transcribeOpenAI(audioBlob, model, apiKey) {
+    const form = new FormData();
+    form.append('file', audioBlob, 'audio.m4a');
+    form.append('model', model || DEFAULT_AUDIO_MODELS.openai);
+    form.append('language', 'pt');
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      body: form,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `OpenAI Whisper HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    return data.text;
+  }
+
+  async function _transcribeGroq(audioBlob, model, apiKey) {
+    const form = new FormData();
+    form.append('file', audioBlob, 'audio.m4a');
+    form.append('model', model || DEFAULT_AUDIO_MODELS.groq);
+    form.append('language', 'pt');
+    form.append('response_format', 'json');
+    const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      body: form,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `Groq HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    return data.text;
+  }
+
+  async function _transcribeGoogle(audioBlob, model, apiKey) {
+    const base64 = await _blobToBase64(audioBlob);
+    const mimeType = audioBlob.type || 'audio/m4a';
+    const m = model || DEFAULT_AUDIO_MODELS.google;
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { inline_data: { mime_type: mimeType, data: base64 } },
+              { text: 'Transcreva este áudio em português. Retorne apenas o texto transcrito, sem comentários.' },
+            ],
+          }],
+        }),
+      }
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `Gemini HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    return data.candidates[0].content.parts[0].text;
+  }
+
+  function _blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
   }
 
   // ── chamada à API do provedor configurado ───────────────────────────────
@@ -227,5 +347,8 @@ Use linguagem cuidadosa para inferências: prefira "possível" ou "provável".`;
     return JSON.parse(data.choices[0].message.content);
   }
 
-  return { getConfig, saveConfig, isConfigured, getDefaultModel, analyzePhoto };
+  return {
+    getConfig, saveConfig, isConfigured, getDefaultModel, analyzePhoto,
+    getAudioConfig, saveAudioConfig, isAudioConfigured, getDefaultAudioModel, transcribeAudio,
+  };
 })();
