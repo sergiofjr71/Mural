@@ -3026,6 +3026,7 @@ function savePhotoIndex(index) {
 }
 
 let clockPhotoNavBusy = false;
+let clockPhotoNavQueued = null; // delta pendente enquanto busy
 
 async function rescheduleClockPhotoTimer() {
   clearInterval(clockPhotoTimer);
@@ -3037,7 +3038,7 @@ async function rescheduleClockPhotoTimer() {
   if (count > 1) {
     clockPhotoTimer = setInterval(() => {
       if (clockPhotoNavBusy) return;
-      void navigateClockPhoto(1, false);
+      void navigateClockPhoto(1, false, false);
     }, State.cfg.interval);
   }
 }
@@ -3047,8 +3048,12 @@ async function startClockPhoto() {
   await rescheduleClockPhotoTimer();
 }
 
-async function navigateClockPhoto(delta, restartTimer = true) {
-  if (clockPhotoNavBusy) return;
+async function navigateClockPhoto(delta, restartTimer = true, manual = true) {
+  if (clockPhotoNavBusy) {
+    // Queues the last direction pressed — replaces any previous pending
+    clockPhotoNavQueued = { delta, restartTimer, manual };
+    return;
+  }
   clockPhotoNavBusy = true;
   try {
     const count = await getPhotoSourceCount();
@@ -3056,13 +3061,18 @@ async function navigateClockPhoto(delta, restartTimer = true) {
 
     clockPhotoIndex = (clockPhotoIndex + delta + count) % count;
     savePhotoIndex(clockPhotoIndex);
-    await updateClockPhoto();
+    await updateClockPhoto(manual);
 
     if (restartTimer) {
       await rescheduleClockPhotoTimer();
     }
   } finally {
     clockPhotoNavBusy = false;
+    if (clockPhotoNavQueued) {
+      const q = clockPhotoNavQueued;
+      clockPhotoNavQueued = null;
+      void navigateClockPhoto(q.delta, q.restartTimer, q.manual);
+    }
   }
 }
 
@@ -3097,7 +3107,7 @@ function bindClockPhotoNavHighlight() {
 }
 
 let clockNavHideTimer = null;
-const CLOCK_NAV_HIDE_MS = 3500;
+const CLOCK_NAV_HIDE_MS = 4000;
 
 function showClockNavArrows() {
   document.body.classList.add('clock-nav-visible');
@@ -3113,9 +3123,28 @@ function setupClockNavAutoReveal() {
 
   clockMode.addEventListener('mousemove', showClockNavArrows);
   clockMode.addEventListener('touchstart', showClockNavArrows, { passive: true });
+
+  // Swipe horizontal no frame de fotos
+  const frame = document.getElementById('clock-photo-frame');
+  if (!frame) return;
+  let swipeStartX = null;
+  let swipeStartY = null;
+  frame.addEventListener('touchstart', (e) => {
+    swipeStartX = e.touches[0].clientX;
+    swipeStartY = e.touches[0].clientY;
+  }, { passive: true });
+  frame.addEventListener('touchend', (e) => {
+    if (swipeStartX === null) return;
+    const dx = e.changedTouches[0].clientX - swipeStartX;
+    const dy = e.changedTouches[0].clientY - swipeStartY;
+    swipeStartX = null;
+    swipeStartY = null;
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    void navigateClockPhoto(dx < 0 ? 1 : -1);
+  }, { passive: true });
 }
 
-async function updateClockPhoto() {
+async function updateClockPhoto(manualNav = false) {
   const imgA = document.getElementById('clock-photo-img-a');
   const imgB = document.getElementById('clock-photo-img-b');
   const frame = document.getElementById('clock-photo-frame');
@@ -3252,7 +3281,7 @@ async function updateClockPhoto() {
     }
 
     if (effect === 'fade') {
-      const FADE_MS = 2500;
+      const FADE_MS = manualNav ? 600 : 2500;
       fadeOutClockPhotoMeta(FADE_MS);
       incoming.classList.add('active');
       incoming.animate([{ opacity: 0 }, { opacity: 1 }], { duration: FADE_MS, easing: 'ease', fill: 'none' });
@@ -3340,7 +3369,7 @@ async function updateClockPhoto() {
     hideClockPhotoMeta();
     // Avança via navigateClockPhoto para respeitar o busy flag e não criar race condition
     if (!clockPhotoNavBusy) {
-      setTimeout(() => void navigateClockPhoto(1, false), 300);
+      setTimeout(() => void navigateClockPhoto(1, false, false), 300);
     }
   };
   loader.src = src;
