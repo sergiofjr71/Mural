@@ -126,6 +126,29 @@ window.PeopleService = (function () {
     try { localStorage.setItem(DISMISSED_KEY, JSON.stringify(d)); } catch { }
   }
 
+  // ── mini-avatar 48×48 a partir de um dataUrl base64 ─────────────────────
+  function _makeMiniAvatar(dataUrl) {
+    return new Promise((resolve) => {
+      if (!dataUrl) { resolve(null); return; }
+      const img = new Image();
+      img.onload = () => {
+        const SIZE = 48;
+        const canvas = document.createElement('canvas');
+        canvas.width  = SIZE;
+        canvas.height = SIZE;
+        const ctx = canvas.getContext('2d');
+        // Recorte central (crop quadrado)
+        const side = Math.min(img.width, img.height);
+        const sx = (img.width  - side) / 2;
+        const sy = (img.height - side) / 2;
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.onerror = () => resolve(null);
+      img.src = dataUrl;
+    });
+  }
+
   // ── criação automática via análise de IA ──────────────────────────────────
   function ensurePeopleFromAnalysis(identifier, peopleCount) {
     if (!peopleCount || peopleCount <= 0) return [];
@@ -133,13 +156,21 @@ window.PeopleService = (function () {
     const dismissed = (_getDismissedCounts()[identifier] || 0);
     if (existing.length + dismissed >= peopleCount) return existing;
 
+    // Tenta gerar mini-avatar da foto atual
+    const thumbDataUrl = window.nativeThumbCache?.get(identifier) || null;
+
     const created = [];
     const toCreate = peopleCount - existing.length - dismissed;
     for (let i = 0; i < toCreate; i++) {
-      // Salva só o identifier (string leve), não o base64 completo
       const p = create({ photoIdentifier: identifier });
       associatePersonToPhoto(identifier, p.id);
       created.push(p);
+      // Gera e salva mini-avatar em background (48×48, ~2KB)
+      if (thumbDataUrl) {
+        _makeMiniAvatar(thumbDataUrl).then((avatar) => {
+          if (avatar) update(p.id, { avatarDataUrl: avatar });
+        });
+      }
     }
     return [...existing, ...created];
   }
@@ -161,6 +192,18 @@ window.PeopleService = (function () {
     update(personId, { dismissed: false });
   }
 
+  // Atualiza avatarDataUrl de pessoas associadas a uma foto se ainda não têm avatar
+  function refreshAvatarsForPhoto(identifier) {
+    const thumb = window.nativeThumbCache?.get(identifier);
+    if (!thumb) return;
+    const people = getPeopleForPhoto(identifier).filter((p) => !p.avatarDataUrl && !p.dismissed);
+    people.forEach((p) => {
+      _makeMiniAvatar(thumb).then((avatar) => {
+        if (avatar) update(p.id, { avatarDataUrl: avatar });
+      });
+    });
+  }
+
   // ── Supabase sync ─────────────────────────────────────────────────────────
   async function _syncPersonToSupabase(person) {
     if (!window.SupabaseClient?.isConfigured()) return;
@@ -176,17 +219,19 @@ window.PeopleService = (function () {
     }, 'id');
   }
 
-  // ── thumbnail via nativeThumbCache ────────────────────────────────────────
+  // ── thumbnail ─────────────────────────────────────────────────────────────
   function _getThumb(person) {
+    // 1. Mini-avatar salvo diretamente no registro (sempre disponível)
+    if (person.avatarDataUrl) return person.avatarDataUrl;
+    // 2. nativeThumbCache (disponível enquanto o app está em execução)
     const cache = window.nativeThumbCache;
-    if (!cache) return null;
-    // Tenta o photoIdentifier salvo no registro primeiro
-    if (person.photoIdentifier && cache.has(person.photoIdentifier)) {
-      return cache.get(person.photoIdentifier);
-    }
-    // Fallback: qualquer foto associada que esteja no cache
-    for (const identifier of getPhotosForPerson(person.id)) {
-      if (cache.has(identifier)) return cache.get(identifier);
+    if (cache) {
+      if (person.photoIdentifier && cache.has(person.photoIdentifier)) {
+        return cache.get(person.photoIdentifier);
+      }
+      for (const id of getPhotosForPerson(person.id)) {
+        if (cache.has(id)) return cache.get(id);
+      }
     }
     return null;
   }
@@ -369,6 +414,7 @@ window.PeopleService = (function () {
     getAll, getById, create, update, remove, mergeInto,
     getPeopleForPhoto, associatePersonToPhoto, removePersonFromPhoto, getPhotosForPerson,
     ensurePeopleFromAnalysis, dismissPersonFromPhoto, dismissPersonGlobally, restorePerson,
+    refreshAvatarsForPhoto,
     renderPeopleList, openEditModal,
   };
 })();

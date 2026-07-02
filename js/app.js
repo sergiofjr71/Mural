@@ -3225,7 +3225,10 @@ async function updateClockPhoto(manualNav = false) {
   // Dispara análise de IA em background (só se ainda não analisada)
   const currentPath = getVisibleFolderPlaylist()[capturedIndex] || '';
   const currentIdentifier = currentPath.includes('::') ? currentPath.split('::')[1] : null;
-  if (currentIdentifier) setTimeout(() => _triggerPhotoAnalysisOnDisplay(currentIdentifier), 500);
+  if (currentIdentifier) setTimeout(() => {
+    _triggerPhotoAnalysisOnDisplay(currentIdentifier);
+    window.PeopleService?.refreshAvatarsForPhoto(currentIdentifier);
+  }, 500);
 
   // Revoga blob da imagem que vai entrar (incoming, não mais necessário)
   if (clockPhotoObjectUrls[incomingKey]) {
