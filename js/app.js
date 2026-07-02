@@ -70,6 +70,7 @@ const PHOTO_INDEX_KEY = 'sd_photo_index';
 // Cache de object URLs para fotos nativas — evita re-carregar a mesma foto
 const nativePhotoCache = new Map(); // identifier → object URL (full quality)
 const nativeThumbCache = new Map(); // identifier → data URL (thumbnail fallback do getMedias)
+window.nativeThumbCache = nativeThumbCache; // expõe para serviços externos (AIConfigService, PeopleService)
 // Cache de metadados para fotos nativas
 const nativeMetaCache = new Map(); // identifier → { location, date, time }
 
