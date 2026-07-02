@@ -4721,6 +4721,16 @@ function initAISettings() {
   // Lista de pessoas
   const peopleList = $('people-list');
   if (peopleList) window.PeopleService?.renderPeopleList(peopleList);
+
+  $('btn-rebuild-people')?.addEventListener('click', () => {
+    const btn = $('btn-rebuild-people');
+    if (btn) { btn.disabled = true; btn.textContent = 'Reprocessando…'; }
+    const count = _rebuildPeopleFromCache();
+    if (btn) {
+      btn.textContent = count > 0 ? `✔ ${count} foto${count !== 1 ? 's' : ''} reprocessada${count !== 1 ? 's' : ''}` : '⚠ Nenhum resultado salvo ainda';
+      setTimeout(() => { btn.textContent = '🔄 Reprocessar fotos analisadas'; btn.disabled = false; }, 3000);
+    }
+  });
 }
 
 function _aiStatus(msg, ok) {
@@ -4747,6 +4757,23 @@ function _sbStatus(msg, ok) {
   el.textContent = msg;
   el.style.color = ok ? 'var(--accent)' : '#ff6b6b';
   el.hidden = false;
+}
+
+// Reprocessa todos os resultados de IA salvos e cria pessoas faltantes
+function _rebuildPeopleFromCache() {
+  const results = (() => {
+    try { return JSON.parse(localStorage.getItem('mural_analysis_results') || '{}'); } catch { return {}; }
+  })();
+  let total = 0;
+  Object.entries(results).forEach(([identifier, result]) => {
+    if ((result.people_count || 0) > 0) {
+      window.PeopleService?.ensurePeopleFromAnalysis(identifier, result.people_count);
+      total++;
+    }
+  });
+  const peopleList = document.getElementById('people-list');
+  if (peopleList) window.PeopleService?.renderPeopleList(peopleList);
+  return total;
 }
 
 // Disparado automaticamente quando uma foto aparece no slideshow
