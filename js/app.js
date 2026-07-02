@@ -4753,39 +4753,47 @@ function _sbStatus(msg, ok) {
 function _triggerPhotoAnalysisOnDisplay(identifier) {
   if (!identifier) return;
   if (!window.AIConfigService?.isConfigured()) return;
-  if (window.PhotoAnalysisService?.getResultFor(identifier)) {
-    // Já analisada — apenas enriquece a exibição
+
+  const cached = window.PhotoAnalysisService?.getResultFor(identifier);
+  if (cached) {
+    // Já analisada: garante que as pessoas estejam criadas mesmo assim
+    if ((cached.people_count || 0) > 0) {
+      window.PeopleService?.ensurePeopleFromAnalysis(identifier, cached.people_count);
+    }
     _enrichCurrentPhotoMeta(identifier);
     return;
   }
-  // Analisa em background sem bloquear o slideshow
+
+  // Sem resultado ainda — analisa em background
   void _analyzePhotoInBackground(identifier);
 }
 
 async function _analyzePhotoInBackground(identifier) {
-  // Usa thumb do cache (populado por loadFullGalleryNative)
   const thumb = window.nativeThumbCache?.get(identifier);
-  if (!thumb) return;
+  if (!thumb) {
+    // Thumb ainda não carregado — agenda nova tentativa em 3s
+    setTimeout(() => {
+      if (!window.PhotoAnalysisService?.getResultFor(identifier)) {
+        void _analyzePhotoInBackground(identifier);
+      }
+    }, 3000);
+    return;
+  }
   const base64 = thumb.split(',')[1];
   if (!base64) return;
 
   try {
     const result = await window.AIConfigService.analyzePhoto(base64);
 
-    // Persiste no localStorage
     window.PhotoAnalysisService?.saveResultLocal(identifier, result);
-
-    // Enriquece overlay se ainda é a foto atual
     _enrichCurrentPhotoMeta(identifier);
 
-    // Detecta pessoas
     if ((result.people_count || 0) > 0) {
       window.PeopleService?.ensurePeopleFromAnalysis(identifier, result.people_count);
       const peopleList = document.getElementById('people-list');
       if (peopleList) window.PeopleService?.renderPeopleList(peopleList);
     }
 
-    // Sync Supabase
     if (window.SupabaseClient?.isConfigured()) {
       window.PhotoAnalysisService?.syncToSupabase(identifier, result).catch(() => {});
     }
