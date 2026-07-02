@@ -3225,9 +3225,12 @@ async function updateClockPhoto(manualNav = false) {
 
   // Dispara análise de IA em background (só se ainda não analisada)
   const currentPath = getVisibleFolderPlaylist()[capturedIndex] || '';
-  const currentIdentifier = currentPath.includes('::') ? currentPath.split('::')[1] : null;
+  // Nativo: "folderID::identifier" → usa identifier; Web: usa o path completo como chave
+  const currentIdentifier = currentPath.includes('::')
+    ? currentPath.split('::')[1]
+    : (currentPath || null);
   if (currentIdentifier) setTimeout(() => {
-    _triggerPhotoAnalysisOnDisplay(currentIdentifier);
+    _triggerPhotoAnalysisOnDisplay(currentIdentifier, src);
     window.PeopleService?.refreshAvatarsForPhoto(currentIdentifier);
   }, 500);
 
@@ -4778,13 +4781,12 @@ function _rebuildPeopleFromCache() {
 }
 
 // Disparado automaticamente quando uma foto aparece no slideshow
-function _triggerPhotoAnalysisOnDisplay(identifier) {
+function _triggerPhotoAnalysisOnDisplay(identifier, imgSrc) {
   if (!identifier) return;
   if (!window.AIConfigService?.isConfigured()) return;
 
   const cached = window.PhotoAnalysisService?.getResultFor(identifier);
   if (cached) {
-    // Já analisada: garante que as pessoas estejam criadas mesmo assim
     if ((cached.people_count || 0) > 0) {
       window.PeopleService?.ensurePeopleFromAnalysis(identifier, cached.people_count);
     }
@@ -4792,23 +4794,51 @@ function _triggerPhotoAnalysisOnDisplay(identifier) {
     return;
   }
 
-  // Sem resultado ainda — analisa em background
-  void _analyzePhotoInBackground(identifier);
+  void _analyzePhotoInBackground(identifier, imgSrc);
 }
 
-async function _analyzePhotoInBackground(identifier) {
+// Converte img src (URL ou blob) para base64 via canvas — funciona no browser e no iOS
+function _srcToBase64(src, maxSize = 512) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const scale = Math.min(1, maxSize / Math.max(img.width || 1, img.height || 1));
+      const w = Math.round((img.width  || maxSize) * scale);
+      const h = Math.round((img.height || maxSize) * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+      resolve(dataUrl.split(',')[1] || null);
+    };
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+async function _analyzePhotoInBackground(identifier, imgSrc) {
+  // 1. Tenta nativeThumbCache (iOS)
+  let base64 = null;
   const thumb = window.nativeThumbCache?.get(identifier);
-  if (!thumb) {
-    // Thumb ainda não carregado — agenda nova tentativa em 3s
+  if (thumb) {
+    base64 = thumb.split(',')[1] || null;
+  }
+
+  // 2. Fallback: converte o src da imagem visível via canvas (browser/web)
+  if (!base64 && imgSrc) {
+    base64 = await _srcToBase64(imgSrc);
+  }
+
+  if (!base64) {
+    // Agenda nova tentativa em 3s caso o cache ainda não esteja populado
     setTimeout(() => {
       if (!window.PhotoAnalysisService?.getResultFor(identifier)) {
-        void _analyzePhotoInBackground(identifier);
+        void _analyzePhotoInBackground(identifier, imgSrc);
       }
     }, 3000);
     return;
   }
-  const base64 = thumb.split(',')[1];
-  if (!base64) return;
 
   try {
     const result = await window.AIConfigService.analyzePhoto(base64);
